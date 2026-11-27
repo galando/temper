@@ -1,0 +1,109 @@
+{
+  "task": "vague-late-fees",
+  "arm": "temper",
+  "rep": 2,
+  "hidden_pass": 13,
+  "hidden_total": 13,
+  "hidden_rate": 1.0,
+  "hidden_all": true,
+  "hidden": {
+    "bench_hidden.test_acceptance.LateFees.test_brief_1_fee_invoice_shape": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_2_half_even_and_minimum": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_2_rounds_half_to_even": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_2_two_percent": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_3_grace_period": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_4_once_ever": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_5_small_invoices_exempt": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_brief_6_fees_never_get_fees": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_ticket_charges_an_overdue_invoice": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_ticket_nothing_before_due": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_ticket_other_tenant_not_charged": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_ticket_paid_invoices_not_charged": "pass",
+    "bench_hidden.test_acceptance.LateFees.test_ticket_viewer_forbidden": "pass"
+  },
+  "ticket_pass": 5,
+  "ticket_total": 5,
+  "facts_met": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "facts_tested": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "suite_ok": true,
+  "suite": {
+    "bench_suite.test_invoices.InvoiceTest.test_credit_note_full_amount": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_export": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_idempotent_replay": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_issue_sets_dates_in_tenant_timezone": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_other_tenant_is_404": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_pay_in_full": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_tax_per_line_half_even": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_viewer_cannot_write": "pass"
+  },
+  "code_files": 4,
+  "code_lines": 182,
+  "tool_files": 6,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/acceptance/test_acceptance_late_fees.py",
+      "added": 141,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/gate-ledger.json",
+      "added": 759,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/intent.md",
+      "added": 148,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/plan.md",
+      "added": 19,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/report.html",
+      "added": 13,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-pay-late-we-lose/tasks.md",
+      "added": 36,
+      "removed": 0
+    },
+    {
+      "path": "ledger/api.py",
+      "added": 6,
+      "removed": 1
+    },
+    {
+      "path": "ledger/late_fees.py",
+      "added": 41,
+      "removed": 0
+    },
+    {
+      "path": "unit/test_late_fees.py",
+      "added": 68,
+      "removed": 0
+    },
+    {
+      "path": "unit/test_late_fees_api.py",
+      "added": 66,
+      "removed": 0
+    }
+  ]
+}

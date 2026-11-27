@@ -8,7 +8,13 @@ export const VIEW_VERSION = 1
 export type Question = { header: string; question: string; options: Array<{ label: string; description: string }> }
 
 // An option with what it means: the move, and the exact CLI calls and steps the answer maps to.
+// 9.8.5: `id` (one id a meaning, kept when the label changes), `kind` (more, accept, cancel, carry, type: what a reader
+// does with it) and `recommended` are what a reader selects by; a view of the base (10e965a) has none: null, null, false.
+// The label stays what the person reads and what an answer is matched on.
 export type Option = {
+  id: string | null
+  kind: string | null
+  recommended: boolean
   label: string
   description: string
   move: string | null
@@ -22,7 +28,8 @@ export type Option = {
   skill: string | null
 }
 
-export type Ask = { stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
+// 9.8.5: `id` is the question's id of the CLI's registry (scripts/flow_base.py), `kind` its kind; null in a view of the base.
+export type Ask = { id: string | null; kind: string | null; stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
 
 export type StageMark = 'passed' | 'failed' | 'skipped' | 'here' | 'todo'
 
@@ -47,7 +54,8 @@ export type RunView = {
   status: string
   // 9.8.0: `agents` are the agents the session may launch, each as it is to be launched: a work action's, and while the run
   // waits on them at the same stage, the ones it named (the session launches only these).
-  next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
+  // WP24: `after`, the before and after calls of the action's agents (a call of the action the view names)
+  next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; after?: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
   ask: Ask | null
   // 9.8.0: the Blocking open questions as the session asks them (header, question, options), before the gate question.
   blockingAsks: Question[]
@@ -71,6 +79,8 @@ export type RunView = {
     prefix: string
     // The small change window that is open (`temper adhoc open`): the stage it was opened at, or null.
     adhocStage: string | null
+    // WP24: its kind: `repair` for a repair in the stage (Build's write rule), null for a small change.
+    adhocKind?: string | null
   } | null
   plan: { approved: boolean; files: string[]; groups: Array<{ id: string; title: string; files: string[] }> }
   // 9.7.6: the fresh review of the plan (a reader with no context); null when it does not apply to the run.
@@ -80,14 +90,25 @@ export type RunView = {
     integration: string | null
   }
   findings: Array<{ id: number; severity: string; confidence: number | null; claim: string; file: string | null; line: number | null; state: 'open' | 'resolved' | 'accepted'; label: string | null }>
-  checks: Array<{ name: string; pass: boolean; detail: string }>
+  // WP19: `state` beside `pass`: 'not measured' is the third state (the CLI's pass null), never read as passed
+  checks: Array<{ name: string; pass: boolean; state: string | null; detail: string }>
   markers: Array<{ name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; value: number | null; lines: string[] }>
   criteria: Array<{ id: string; priority: string; status: string; text: string; evidence: string[] }>
   loops: Array<{ from: string; to: string; reason: string; iteration: number; max: number; at: string }>
   skips: Array<{ stage: string; reason: string; by: string }>
   usage: { ms: number; byStage: Array<{ stage: string; ms: number; runs: number }>; byModel: Array<{ model: string; ms: number; runs: number }> }
   time: { started: string | null; updated: string | null }
+  // WP15: the card of the current question; null for a question with none, and in a view written before it
+  card: Card | null
 }
+
+// WP15: the card of a question that decides (scripts/card.py): the approval, the commit, or a stop. A section is cut
+// when `total` is larger than the count of its rows; `file` says where the rest is. The mod draws it; it decides
+// nothing.
+export const CARD_KINDS = ['approval', 'commit', 'stop'] as const
+export type CardRow = { text: string; mark: string | null }
+export type CardSection = { id: string; title: string; note: string | null; rows: CardRow[]; total: number; file: string | null }
+export type Card = { kind: typeof CARD_KINDS[number]; runId: string; step: number; title: string; tag: string; sections: CardSection[]; foot: string[] }
 
 export type FreshFinding = { id: number; severity: string; lens: string; claim: string; state: 'open' | 'resolved' | 'accepted' | 'contested' | 'escalated'; cite: string | null }
 
@@ -111,6 +132,9 @@ function question(v: unknown): Question | null {
 function option(v: unknown): Option {
   const o = obj(v)
   return {
+    id: strOrNull(o.id),
+    kind: strOrNull(o.kind),
+    recommended: o.recommended === true,
     label: str(o.label),
     description: str(o.description),
     move: strOrNull(o.move),
@@ -126,14 +150,36 @@ function ask(v: unknown): Ask | null {
   const a = obj(v)
   const q = question(a.question)
   if (q === null) return null
-  return { stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
+  return { id: strOrNull(a.id), kind: strOrNull(a.kind), stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
 }
 
+// WP16 (defect 1): the CLI writes `question` as the dialog's question object (header, question, options), as it writes
+// a gate question; a view that held the text alone is read as before.
 function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answer: string } | null {
   const c = obj(v)
-  const q = question({ header: c.header, question: c.question, options: c.options })
+  const d = typeof c.question === 'string' ? { header: c.header, question: c.question, options: c.options } : obj(c.question)
+  const q = question({ header: d.header ?? c.header, question: d.question, options: d.options ?? c.options })
   if (q === null) return null
-  return { ask: { stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
+  return { ask: { id: strOrNull(c.id), kind: strOrNull(c.kind), stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
+}
+
+// A card of a kind outside the closed list is no card.
+function card(v: unknown): Card | null {
+  const c = obj(v)
+  if (!CARD_KINDS.includes(c.kind as Card['kind'])) return null
+  return {
+    kind: c.kind as Card['kind'],
+    runId: str(c.run_id),
+    step: num(c.step, -1),
+    title: str(c.title),
+    tag: str(c.tag),
+    sections: arr(c.sections).map(x => {
+      const s = obj(x)
+      const rows = arr(s.rows).map(y => ({ text: str(obj(y).text), mark: strOrNull(obj(y).mark) }))
+      return { id: str(s.id), title: str(s.title), note: strOrNull(s.note), rows, total: num(s.total, rows.length), file: strOrNull(s.file) }
+    }),
+    foot: strs(c.foot),
+  }
 }
 
 const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'covered', 'pass', 'fail', 'parked']
@@ -193,6 +239,7 @@ export function parseRunView(text: string): RunView | null {
       say: str(n.say),
       calls: strs(n.calls),
       steps: strs(n.steps),
+      after: strs(n.after),
       agents: arr(n.agents).map(x => ({ type: str(obj(x).type), model: str(obj(x).model), prompt: str(obj(x).prompt) })),
     },
     ask: ask(v.ask),
@@ -217,6 +264,7 @@ export function parseRunView(text: string): RunView | null {
             trivialExit: g.trivial_exit === true,
             prefix: str(g.prefix),
             adhocStage: strOrNull(g.adhoc_stage),
+            adhocKind: strOrNull(g.adhoc_kind),
           },
     plan: {
       approved: plan.approved === true,
@@ -270,7 +318,7 @@ export function parseRunView(text: string): RunView | null {
         label: strOrNull(f.label),
       }
     }),
-    checks: arr(v.checks).map(x => ({ name: str(obj(x).name), pass: obj(x).pass === true, detail: str(obj(x).detail) })),
+    checks: arr(v.checks).map(x => ({ name: str(obj(x).name), pass: obj(x).pass === true, state: strOrNull(obj(x).state), detail: str(obj(x).detail) })),
     markers: arr(v.check_markers).map(x => {
       const m = obj(x)
       return { name: str(m.name), state: oneOf(m.state, ['pass', 'fail', 'info', 'none'] as const, 'none'), detail: str(m.detail), value: numOrNull(m.value), lines: strs(m.lines) }
@@ -287,5 +335,6 @@ export function parseRunView(text: string): RunView | null {
       byModel: Object.entries(obj(usage.by_model)).map(([model, x]) => ({ model, ms: num(obj(x).ms), runs: num(obj(x).runs) })),
     },
     time: { started: strOrNull(time.started), updated: strOrNull(time.updated) },
+    card: card(v.card),
   }
 }

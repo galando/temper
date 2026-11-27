@@ -1,0 +1,113 @@
+# Release 9.8.5 case file 23: sourced by test-temper.sh after temper-cases-22.sh; its helpers (nx, vw, fresh, gpass, gfail, labels, m_setup) are used here.
+
+# --- 9.8.5: the setup block (scripts/run_env.py): the project's environment contract, applied to every command the CLI runs ---
+_re() { python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import run_env; $2" "$REPO_ROOT/scripts" "${@:3}"; }
+fresh
+assert_eq "9.8.5 setup: no block, load_setup is empty and run_cmd is as before" "{}|(b'hi\\n', 0)" \
+  "$(_re x "print(str(run_env.load_setup('.claude/temper.config'))+'|'+str(run_env.run_cmd('.', 10, ['echo hi'], {})))")"
+mkdir -p jdk24; printf '#!/usr/bin/env bash\necho "openjdk version \\"24.0.1\\"" >&2\n' > jdk24/java; chmod +x jdk24/java
+printf 'setup:\n  run: export PATH="$PWD/jdk24:$PATH"\n  env:\n    IT_POSTGRES_PORT: 5433\n    DB_PASSWORD: x\n' >> .claude/temper.config
+assert_eq "9.8.5 setup: the run line reaches the command, env is set, a credential name is left out" "0|5433||['DB_PASSWORD']" \
+  "$(_re x "s = run_env.load_setup('.claude/temper.config'); o, rc = run_env.run_cmd('.', 10, ['java -version 2>&1 | grep -q \"24\"; echo \$?; echo \$IT_POSTGRES_PORT; echo \$DB_PASSWORD'], s); print('|'.join(o.decode().split('\\n')[1:4]) + '|' + str(s['dropped']))")"
+assert_eq "9.8.5 setup: a list command runs under the block too" "temper-setup: OK|5433" \
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['bash', '-c', 'echo \$IT_POSTGRES_PORT']); print('|'.join(o.decode().splitlines()))")"
+sed -i 's/^  run: .*/  run: exit 3/' .claude/temper.config
+assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, and the command does not run" "125|temper-setup: FAIL (exit 3)" \
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['echo never']); print(str(rc) + '|' + o.decode().strip())")"
+assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
+# U18 (WP29): a value of setup.env reaches the command exactly as the file writes it; the reader keeps no float of it
+printf 'setup:\n  env:\n    PYTHON_VERSION: 3.10\n    NODE: 20.10\n    PORT: 5433\n    QUOTED: "1.50"\n' > u18.config
+# the shell prints the four values: printenv of macOS prints the first name only, so a Mac could never see the rest
+assert_eq "9.8.5 setup (U18): an unquoted number of setup.env reaches the command as written (3.10, not 3.1)" "3.10|20.10|5433|1.50" \
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['bash', '-c', 'echo \$PYTHON_VERSION \$NODE \$PORT \$QUOTED'], run_env.load_setup('u18.config')); print('|'.join(o.decode().split()))")"
+# U18 (WP20): what is shown hides a URL's password in any value and the names PW and PWD; the command still receives them
+assert_eq "9.8.5 setup (U18): mask hides a URL's password and a PW or PWD name, a display rule only" \
+  "DATABASE_URL=postgres://u:<left out>@h/db MY_PW=<left out> DB_PWD=<left out> PWD=/w OLDPWD=/o psql https://u:<left out>@h:5432 https://u@h PWM=1|zzz" \
+  "$(_re x "import os; os.environ['MY_PW'] = 'zzz'; print(run_env.mask('DATABASE_URL=postgres://u:secret@h/db MY_PW=zzz DB_PWD=y PWD=/w OLDPWD=/o psql https://u:p4ss@h:5432 https://u@h PWM=1') + '|' + run_env.test_env().get('MY_PW', 'gone'))")"
+# NEW-FLOW-5, R0-R1-4: the shapes U18 left shown, one line each. A display rule still: no masker is complete (a flag
+# such as -psecret and a key of no known shape under a plain name are still shown; docs/commands.md says so).
+_mk() { _re x "print(run_env.mask(sys.argv[2]))" "$1"; }
+assert_eq "9.8.5 setup (U18): mask hides a name with PASS as a whole part, and no name that only holds the letters" \
+  "DB_PASS=<left out> SMTP_PASS=<left out> PASS=<left out> COMPASS=n PASSENGER=2" "$(_mk 'DB_PASS=hunter2 SMTP_PASS=s3cret PASS=x COMPASS=n PASSENGER=2')"
+assert_eq "9.8.5 setup (U18): mask hides a URL's password up to the last @ before the host, and leaves a URL with a port and no user" \
+  "DATABASE_URL=postgres://u:<left out>@h/db curl https://h:8080/p?mail=a@b.c" "$(_mk 'DATABASE_URL=postgres://u:p@ss@h/db curl https://h:8080/p?mail=a@b.c')"
+assert_eq "9.8.5 setup (U18): mask hides a secret key inside a value, after ? or & (a JDBC URL)" \
+  "JDBC_URL=jdbc:postgresql://h/db?user=app&password=<left out>|jdbc:postgresql://h/db?password=<left out>" \
+  "$(_re x "print(run_env.shown_var('JDBC_URL', 'jdbc:postgresql://h/db?user=app&password=hunter2') + '|' + run_env.mask('jdbc:postgresql://h/db?password=hunter2&user=app'))")"
+assert_eq "9.8.5 setup (U18): mask hides a secret key inside a value, after ; (a connection string, a second assignment of a run line)" \
+  "CONN=Server=h;User=u;Password=<left out>;Pwd=<left out>;|export A=1;TOKEN=<left out> go" \
+  "$(_re x "print(run_env.shown_var('CONN', 'Server=h;User=u;Password=hunter2;Pwd=hunter3;') + '|' + run_env.mask('export A=1;TOKEN=abc go'))")"
+assert_eq "9.8.5 setup (U18): mask hides a value of a well known key shape under a plain name" \
+  "export API=<left out> GH=<left out> AWS=<left out> SKU=sk-1" "$(_mk 'export API=sk-live-abcdef0123456789 GH=ghp_abcdefghijklmnopqrstuvwxyz0123456789 AWS=AKIAABCDEFGHIJKLMNOP SKU=sk-1')"
+printf '    PYTHON_VERSION: 3.10\n    BUILD_ID: 007\n' >> .claude/temper.config   # two more lines of the setup block's env
+assert_eq "9.8.5 setup (U18): config get prints a value of setup.env as the file writes it (3.10, not 3.1)" "3.10|007|5433" \
+  "$("$TEMPER" config get setup.env.PYTHON_VERSION 2>&1)|$("$TEMPER" config get setup.env.BUILD_ID 2>&1)|$("$TEMPER" config get setup.env.IT_POSTGRES_PORT 2>&1)"
+# WP21: the two keys of the plan gate's old per command check are gone from the template (the pattern is spelled so that
+# the grep of the package's "Done when" does not find it here)
+assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \
+  "setup=$(grep -cE '^# *setup:' "$REPO_ROOT/templates/temper.config.default")|old keys=$(grep -cE '^# *  pre[f]light-(timeout|skip):' "$REPO_ROOT/templates/temper.config.default")"
+# WP08 (M8): the reader merges a repeated key, and the template has no empty key that hides a documented block
+# WP29: the template of 10 live lines documents two blocks in comments, check.commands and setup; only the first, from
+# "# check:" to its coverage line, is uncommented here (the build block of the old template is gone from it)
+awk '!d && /^# check:$/ {on = 1} on {sub(/^# /, "")} on && /coverage:/ {on = 0; d = 1} {print}' \
+  "$REPO_ROOT/templates/temper.config.default" > .claude/temper.config
+assert_eq "the template with the check commands block uncommented keeps it" "npm test|npx c8 npm test" \
+  "$("$TEMPER" config get check.commands.test 2>&1)|$("$TEMPER" config get check.commands.coverage 2>&1)"
+{ cat "$REPO_ROOT/templates/temper.config.default"; printf 'autonomy:\n  policy: decide\n'; } > .claude/temper.config
+assert_eq "two autonomy blocks keep park-on-touch" "**/auth/**,**/payment/**,**/billing/**|decide" \
+  "$("$TEMPER" config get autonomy.park-on-touch 2>&1 | tr '\037' ',')|$("$TEMPER" config get autonomy.policy 2>&1)"
+
+# --- 9.8.5: every agent prompt carries the setup block (flow.plugin_line) ---
+fresh
+assert_eq "9.8.5 prompts: no block, no Environment setup line" "0" "$(nx "sum(a['prompt'].count('Environment setup') for a in d.get('agents') or [])")"
+printf 'setup:\n  run: eval "$(scripts/ensure-jdk24.sh --export)"\n  env:\n    IT_POSTGRES_PORT: 5433\n    DB_PASSWORD: hunter2\n' >> .claude/temper.config
+assert_eq "9.8.5 prompts: the Intent agent's prompt holds the line once, with the run line and the variables, no credential" "1|True|True|False" \
+  "$(nx "p = d['agents'][0]['prompt']; '|'.join(map(str, [p.count('Environment setup'), 'ensure-jdk24.sh --export' in p, 'IT_POSTGRES_PORT=5433' in p, 'hunter2' in p or 'DB_PASSWORD' in p]))")"
+sed -i '/^  run: /d' .claude/temper.config
+assert_eq "9.8.5 prompts: a block with only env says run: (none)" "True" "$(nx "'run: (none)' in d['agents'][0]['prompt']")"
+printf '    DATABASE_URL: postgres://u:s3cret@h/db\n    MY_PW: zzz\n' >> .claude/temper.config
+assert_eq "9.8.5 prompts (U18): a URL's password and a PW name of setup.env are not shown in a prompt" "True|True|False" \
+  "$(nx "p = d['agents'][0]['prompt']; '|'.join(map(str, ['DATABASE_URL=postgres://u:<left out>@h/db' in p, 'MY_PW=<left out>' in p, 's3cret' in p or 'zzz' in p]))")"
+
+# --- 9.8.5: temper doctor reports the toolchain, the setup block and the services, and changes nothing ---
+fresh
+printf 'setup:\n  run: touch ran-marker\n  env:\n    IT_PORT: 5433\n    API_TOKEN: x\n  services:\n    closed: 127.0.0.1:9\n  tools: [git, no-such-tool-xyz]\n' >> .claude/temper.config
+before="$(find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 cksum | cksum)"
+OUT="$("$TEMPER" doctor 2>&1)"; rc=$?
+assert_eq "9.8.5 doctor: exit 0, a tool's version, a missing tool, the run line not run, the variables, the service state" \
+  "0|True|True|True|True|True|True|False" \
+  "$rc|$(python3 -c "
+import sys; o = sys.stdin.read()
+print('|'.join(map(str, ['git: git version' in o, 'no-such-tool-xyz: not on PATH' in o, 'run: touch ran-marker (not run by doctor' in o,
+      'IT_PORT=5433' in o, 'left out (credential name): API_TOKEN' in o, 'closed 127.0.0.1:9: not answering' in o, 'API_TOKEN=' in o])))" <<<"$OUT")"
+assert_eq "9.8.5 doctor: no file changed and the setup line did not run" "$before|no" \
+  "$(find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 cksum | cksum)|$([[ -e ran-marker ]] && echo yes || echo no)"
+fresh
+assert_eq "9.8.5 doctor: no block says so" "True" "$("$TEMPER" doctor 2>&1 | grep -c '^Setup block: none' | sed 's/^1$/True/')"
+assert_eq "9.8.5 doctor: --help lists it" "1" "$("$TEMPER" --help 2>&1 | grep -c '^  temper doctor ')"
+rm -rf jdk24
+
+# --- WP08 (U4): the store of reused passes (run_env.run_cached), a test of shipped code ---
+fresh; mkdir -p rs; git -C rs init -q; echo a > rs/a.txt; git -C rs add a.txt; git -C rs -c user.name=t -c user.email=t@e commit -q -m base
+_rk() { # _rk <command> <setup json>: one run_cached call in rs; prints the exit, ran or reused, and the first output line
+  _re x "import json; o, rc, r = run_env.run_cached(sys.argv[2], 10, [sys.argv[3]], json.loads(sys.argv[4])); print('%d|%s|%s' % (rc, 'reused' if r else 'ran', (o.decode().splitlines() or [''])[0]))" "$PWD/rs" "$1" "$2"
+}
+_rn() { cat "rs/.git/$1" 2>/dev/null | wc -l | tr -d ' '; }
+assert_eq "reuse: a pass on a clean tree is kept and the second call does not run" "0|ran|0|reused|1" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rn cnt)"
+# WP22: a failure is kept beside the pass and not run again on the same key; a tree with an uncommitted change is a
+# tree of its own (the one digest, run_env.tree_key)
+assert_eq "reuse: a failure is kept and not run again on the same tree" "1|ran|1|reused|1" \
+  "$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rn cntf)"
+echo changed > rs/a.txt
+assert_eq "reuse: a tree with an uncommitted change runs once, and its second call is reused" "ran|reused|2" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rn cnt)"
+git -C rs checkout -q -- a.txt
+_other="$(_rk 'echo r >> .git/cnt; true' '{}' | cut -d'|' -f2)"
+echo b > rs/b.txt; git -C rs add b.txt; git -C rs -c user.name=t -c user.email=t@e commit -q -m more
+_tree="$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)"
+_setup="$(_rk 'echo r >> .git/cnt' '{"run": "true"}' | cut -d'|' -f2)"
+assert_eq "reuse: another command, another tree and another setup block each run again" "ran|ran|ran|5" "$_other|$_tree|$_setup|$(_rn cnt)"
+assert_eq "reuse: the output of a reused pass says so" "0|reused|True" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | python3 -c "import sys; rc, how, line = sys.stdin.read().rstrip('\n').split('|', 2); print('%s|%s|%s' % (rc, how, line.startswith('[temper: the same command passed on this same tree at') and 'reused, not run again' in line))")"
+rm -rf rs

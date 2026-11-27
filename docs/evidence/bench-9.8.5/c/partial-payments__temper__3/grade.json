@@ -1,0 +1,74 @@
+{
+  "task": "partial-payments",
+  "arm": "temper",
+  "rep": 3,
+  "hidden_pass": 6,
+  "hidden_total": 26,
+  "hidden_rate": 0.231,
+  "hidden_all": false,
+  "hidden": {
+    "bench_hidden.test_acceptance.Payments.test_bad_amounts": "error",
+    "bench_hidden.test_acceptance.Payments.test_draft_and_void_take_none": "pass",
+    "bench_hidden.test_acceptance.Payments.test_idempotent_payment": "error",
+    "bench_hidden.test_acceptance.Payments.test_list_includes_amounts": "error",
+    "bench_hidden.test_acceptance.Payments.test_no_amount_on_fresh_invoice_still_pays_in_full": "error",
+    "bench_hidden.test_acceptance.Payments.test_no_amount_pays_the_balance": "fail",
+    "bench_hidden.test_acceptance.Payments.test_one_audit_event_per_payment": "pass",
+    "bench_hidden.test_acceptance.Payments.test_overpayment_is_conflict_and_changes_nothing": "error",
+    "bench_hidden.test_acceptance.Payments.test_paid_invoice_takes_no_more": "pass",
+    "bench_hidden.test_acceptance.Payments.test_partial_payment_status_and_amounts": "error",
+    "bench_hidden.test_acceptance.Payments.test_second_payment_completes": "error",
+    "bench_hidden.test_acceptance.Payments.test_viewer_cannot_pay": "pass",
+    "bench_hidden.test_acceptance.Refunds.test_full_refund_back_to_issued": "error",
+    "bench_hidden.test_acceptance.Refunds.test_idempotent_refund": "error",
+    "bench_hidden.test_acceptance.Refunds.test_one_audit_event_per_refund_none_when_rejected": "fail",
+    "bench_hidden.test_acceptance.Refunds.test_other_tenant_gets_404": "error",
+    "bench_hidden.test_acceptance.Refunds.test_partial_refund_reopens": "fail",
+    "bench_hidden.test_acceptance.Refunds.test_refund_bad_amount": "fail",
+    "bench_hidden.test_acceptance.Refunds.test_refund_more_than_left_of_payment": "fail",
+    "bench_hidden.test_acceptance.Refunds.test_refund_of_other_invoices_payment_is_404": "pass",
+    "bench_hidden.test_acceptance.Refunds.test_viewer_cannot_refund": "fail",
+    "bench_hidden.test_acceptance.VoidCreditExport.test_can_void_after_full_refund": "fail",
+    "bench_hidden.test_acceptance.VoidCreditExport.test_cannot_void_with_money_paid": "pass",
+    "bench_hidden.test_acceptance.VoidCreditExport.test_credit_note_is_the_balance": "fail",
+    "bench_hidden.test_acceptance.VoidCreditExport.test_export_columns": "fail",
+    "bench_hidden.test_acceptance.VoidCreditExport.test_no_credit_note_when_balance_zero": "error"
+  },
+  "suite_ok": true,
+  "suite": {
+    "bench_suite.test_invoices.InvoiceTest.test_credit_note_full_amount": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_export": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_idempotent_replay": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_issue_sets_dates_in_tenant_timezone": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_other_tenant_is_404": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_pay_in_full": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_tax_per_line_half_even": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_viewer_cannot_write": "pass"
+  },
+  "code_files": 0,
+  "code_lines": 0,
+  "tool_files": 4,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": ".temper/specs/customers-want-pay-invoices-parts/acceptance/test_acceptance_partial_payments.py",
+      "added": 244,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-want-pay-invoices-parts/intent.md",
+      "added": 166,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-want-pay-invoices-parts/plan.md",
+      "added": 20,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/customers-want-pay-invoices-parts/tasks.md",
+      "added": 74,
+      "removed": 0
+    }
+  ]
+}

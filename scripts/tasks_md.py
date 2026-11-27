@@ -1,9 +1,11 @@
 """tasks_md.py: the grouped tasks.md of a run, read the one way the CLI and flow.py both read it.
 
   python3 tasks_md.py parse <tasks.md>
-      prints {groups, tasks, integration} as JSON: groups [{id, title, depends, validate, interfaces,
-      context, context_bytes, tasks}], tasks [{n, title, group, files, depends, test, cases,
-      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines.
+      prints {groups, tasks, integration, integrations} as JSON: groups [{id, title, depends, validate, interfaces,
+      context, context_bytes, tasks}], tasks [{n, title, group, files, depends, test, cases, case_lines,
+      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines. case_lines is the text of
+      each **Cases:** bullet (R2-3: the approval binds what the card shows). integration is the last
+      **Integration:** line, the one every reader runs; integrations is each of them, in order.
   python3 tasks_md.py schedule <groups.json> <max-parallel> <task model> <escalation model> <project> <tasks.md>
       prints the ready set (`temper schedule`): one JSON line per launchable task, then a done or a
       waiting line when no task is ready.
@@ -13,6 +15,16 @@ Standard library only.
 import json
 import re
 import sys
+
+
+def is_test(f):
+    """A declared file that is a test file by its folder or its name: the plan gate's rule (9.8.4: more than two tasks of
+    one group on the same production file is one task cut in pieces, and a shared test file does not count; scripts/
+    plan_rows.py reads it), read by a repair too (repair_ops.test_file, the audit's R4-2)."""
+    parts = f.lower().split('/')
+    base = parts[-1]
+    return (any(p in ('test', 'tests', 'spec', 'specs', '__tests__', 'selftest', 'testing') for p in parts[:-1])
+            or base.startswith(('test_', 'test-')) or re.search(r'[._-](test|tests|spec)\.[\w]+$', base) is not None)
 
 
 def parse(path):
@@ -26,6 +38,7 @@ def parse(path):
     CASE = re.compile(r'^\s*[-*]\s+(?!\[[ xX]\])\S')
     groups, tasks = [], []
     integration = None
+    integrations = []
     cur_g = cur_t = None
     ctx_open = False
     cases_open = False
@@ -50,7 +63,8 @@ def parse(path):
             continue
         if tm:
             cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
-                     'files': [], 'depends': [], 'test': '', 'manual': False, 'confirm': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
+                     'files': [], 'depends': [], 'test': '', 'manual': False, 'confirm': '', 'cases': 0,
+                     'case_lines': [], 'block_bytes': 0, 'block': ''}
             tasks.append(cur_t); ctx_open = False; cases_open = False; files_open = False
             if cur_g: cur_g['tasks'].append(cur_t['n'])
             continue
@@ -60,8 +74,8 @@ def parse(path):
         fm = FIELD.match(line)
         if fm:
             key, val = fm.group(1), fm.group(2)
-            if key == 'Integration':
-                integration = cmd_of(val); ctx_open = False; continue
+            if key == 'Integration':   # the last line is the plan's; every line is kept for the digest (WP32)
+                integration = cmd_of(val); integrations.append(integration); ctx_open = False; continue
             if cur_t is not None:
                 # a **File:** line per file, or several on one line: every path counts, once
                 files_open = key in ('File', 'Files')
@@ -75,12 +89,18 @@ def parse(path):
                     cur_t['test'] = 'manual' if mm else cmd_of(val)
                 # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)
                 cases_open = key == 'Cases'
-                if cases_open and val.strip(): cur_t['cases'] += 1
+                if cases_open and val.strip():
+                    cur_t['cases'] += 1
+                    cur_t['case_lines'].append(val.strip())
                 cur_t['block'] += line + '\n'; continue
             if cur_g is not None:
                 ctx_open = False
                 if key == 'Depends': cur_g['depends'] = re.findall(r'G\d+', val)
-                elif key == 'Validate': cur_g['validate'] = cmd_of(val)
+                # a group's Validate is the backquoted command of its line: prose with no backquote is no command
+                # (the plan gate's row group validate command fails it, R4-7)
+                elif key == 'Validate':
+                    vm = re.search(r'`([^`]+)`', val)
+                    cur_g['validate'] = vm.group(1).strip() if vm else ''
                 elif key == 'Interfaces':
                     cur_g['interfaces'] += [{'path': a, 'literal': b} for a, b in
                                             re.findall(r'`([^`]+)`\s*[—\-]+\s*`([^`]+)`', val)]
@@ -95,7 +115,9 @@ def parse(path):
                 cur_t['files'] += [f for f in got if f not in cur_t['files']]
             elif files_open and line.strip() and not re.match(r'^\s*[-*]\s+\[[ xX]\]', line):
                 files_open = False
-            if cases_open and CASE.match(line): cur_t['cases'] += 1
+            if cases_open and CASE.match(line):
+                cur_t['cases'] += 1
+                cur_t['case_lines'].append(re.sub(r'^\s*[-*]\s+', '', line).strip())
             cur_t['block'] += line + '\n'
         elif cur_g is not None and ctx_open:
             cur_g['context'] += line + '\n'
@@ -106,7 +128,7 @@ def parse(path):
         t['block'] = ('### Task %d: %s\n%s' % (t['n'], t['title'], t['block'])).strip('\n')
         t['block_bytes'] = len(t['block'].encode('utf-8'))
 
-    return {'groups': groups, 'tasks': tasks, 'integration': integration}
+    return {'groups': groups, 'tasks': tasks, 'integration': integration, 'integrations': integrations}
 
 
 # ---- the states of a Build task, one definition each -------------------------------------------------------------------

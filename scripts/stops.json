@@ -1,0 +1,300 @@
+{
+ "version": 1,
+ "about": "The stops an unattended run must keep: the 18 of the review of the auto advance (v-auto-advance.md section 2, a working paper of the build that is not kept in the tree) and the calls only the person may cause (the mod's rule personOnly). check names the case or scenario that walks the stop; WP07 fills it. A stop leaves this list only with a decision record.",
+ "stops": [
+  {
+   "id": "design.tasks-changed",
+   "where": "Design",
+   "trigger": "Design changed the plan's tasks: the changed tasks need the approval",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "design.concerns",
+   "where": "Design",
+   "trigger": "open areas of concern: a true decision",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "gate.failed",
+   "where": "Design, Build",
+   "trigger": "the stage's gate failed",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "task.manual",
+   "where": "Build",
+   "trigger": "a manual task: only the person can confirm it",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "build.foreign",
+   "where": "Build",
+   "trigger": "commits the CLI did not make on a group's branch: keeping them is the person's",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "build.remerge",
+   "where": "Build",
+   "trigger": "merging the groups again after such commits were settled",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "group.parked",
+   "where": "Build",
+   "trigger": "a parked group (a task out of attempts, a task blocked on a file no task of its own group declares or the rule may not add, an agent's commits)",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "group.fail-typed",
+   "where": "Build",
+   "trigger": "a failed group check whose recommended option needs typing or is Save for later",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "group.fail-back",
+   "where": "Build",
+   "trigger": "a failed group check whose recommended option is a step back to Plan",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "task.env",
+   "where": "Build",
+   "trigger": "a task that failed on the environment (asked, the run stays armed)",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "build.ungrouped",
+   "where": "Build",
+   "trigger": "tasks.md has tasks and no groups",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "scope.drift",
+   "where": "Build",
+   "trigger": "a DRIFT row in a fix pass panel: never answered for the person",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "review.unfinished",
+   "where": "Review",
+   "trigger": "a failed row with no open finding at medium or above, or a spent repeat budget",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "check.setup",
+   "where": "Check",
+   "trigger": "a setup fault, a missing measurement, the locked acceptance tests, or a spent repeat budget",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "check.person-criterion",
+   "where": "Check",
+   "trigger": "a criterion only the person can confirm",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "budget.spent",
+   "where": "Plan, Build, Review, Check, Pipeline",
+   "trigger": "budget spent: the next step repeats a failed check past its limit (2 for one failure, 6 for one run)",
+   "check": "budget: an unattended run at the limit stops"
+  },
+  {
+   "id": "commit.always",
+   "where": "Commit",
+   "trigger": "the commit question, always",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "commit.fail",
+   "where": "Commit",
+   "trigger": "the commit gate failed",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "plan.after-back",
+   "where": "Plan",
+   "trigger": "the plan question again after any step back to Plan",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.override",
+   "where": "any stage",
+   "trigger": "temper override: a skip of a failed check",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.plan-review",
+   "where": "Plan",
+   "trigger": "temper plan review or plan patch: the Context check answer, a change to the approved plan",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.task-confirm",
+   "where": "Build",
+   "trigger": "temper task confirm or task accept: a manual task confirmed, a covered task accepted",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.adhoc-open",
+   "where": "Review, Check",
+   "trigger": "temper adhoc open: a small change",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.acceptance-reopen",
+   "where": "Build, Check",
+   "trigger": "temper acceptance reopen: the locked acceptance tests reopened",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.branch",
+   "where": "Intent",
+   "trigger": "temper state set branch: the run's branch",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.accept-foreign",
+   "where": "Build",
+   "trigger": "temper group reopen with --accept-foreign: keeping a task agent's commits",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.evidence-accept",
+   "where": "Review",
+   "trigger": "temper evidence accept or evidence clear: accepting a finding, clearing a ledger",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.leave-intent-plan",
+   "where": "Intent, Plan",
+   "trigger": "temper state advance intent_complete or plan_complete: leaving Intent or Plan",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.loop",
+   "where": "any stage",
+   "trigger": "temper state loop, state init, state clear, state archive: a step back, starting over, ending the run",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.arm",
+   "where": "Plan",
+   "trigger": "temper state set run_mode to anything but interactive: arming an unattended run",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.step-back",
+   "where": "any stage",
+   "trigger": "temper state set next_stage to an earlier stage: a step back",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.budget-grant",
+   "where": "every stage",
+   "trigger": "temper budget grant: more repeats of a failed check than the budget holds",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "plan.sensitive-path",
+   "where": "Build, Review",
+   "trigger": "a failed check in a plan that declares a sensitive path (autonomy.park-on-touch): no repair by rule",
+   "check": "run: no repair by rule when the plan declares a sensitive path"
+  },
+  {
+   "id": "run.taken-up",
+   "where": "any stage",
+   "trigger": "the person took the run up again: the stage's question, once (temper go --taken-up)",
+   "check": "run: a run taken up again asks its stage once"
+  },
+  {
+   "id": "approval.changed",
+   "where": "Build, Check",
+   "trigger": "the row `intent unchanged since the approval` failed: a rule never changes the intent or the approved plan, so the person approves again or restores the file",
+   "check": "bound: an unattended run stops at the failed row: next is the park call, never a loop back"
+  },
+  {
+   "id": "base.red",
+   "where": "any stage",
+   "trigger": "a red base or a fault of the environment that nobody answered (WP20): the run stops with a notice",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "plan.command",
+   "where": "Plan, Build",
+   "trigger": "a command the plan wrote fails or times out on the base (WP21): never changed, skipped or planned again by rule",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.baseline",
+   "where": "any stage",
+   "trigger": "temper baseline accept-red or baseline skip: going on from a red base, skipping the check of a command the plan wrote",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "repair.contested",
+   "where": "Review",
+   "trigger": "a contested or escalated finding: never repaired by rule (WP24), the person decides it",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.outside-plan",
+   "where": "Review",
+   "trigger": "a finding whose fix needs a file outside the plan, or the plan or the intent changed: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.sensitive",
+   "where": "Review, Check",
+   "trigger": "a finding under a sensitive path, or any run whose plan touches one (risk H): never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.unfinished",
+   "where": "Review",
+   "trigger": "an unfinished Review (no completion row), or the row `no code changed at Review`: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.environment",
+   "where": "Check",
+   "trigger": "an environment fault (SETUP, class environment): never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.unmeasured",
+   "where": "Check",
+   "trigger": "a check that was not measured: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.person-criterion",
+   "where": "Check",
+   "trigger": "a criterion only the person can confirm: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.acceptance-test",
+   "where": "Check",
+   "trigger": "a locked acceptance or regression test the triage does not blame on the code: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.tests-removed",
+   "where": "Review, Check",
+   "trigger": "a repair whose diff removes test lines: never committed or resolved by rule; repair.stop asks (WP24)",
+   "check": "D37c a repair that removes a line of a test file is not committed or resolved: the run asks and shows the line"
+  },
+  {
+   "id": "repair.worse",
+   "where": "Review, Check",
+   "trigger": "a repair that made things worse, reverted by the CLI: repair.stop names what broke (WP24)",
+   "check": "D37e after one repair the run asks one question, repair.stop"
+  },
+  {
+   "id": "config.tidy",
+   "where": "Intent, before the first agent of a run",
+   "trigger": "a config of 9.8.4 or of the base with lines that only repeat old defaults or are no longer read: only the person's answer tidies it; the CLI refuses config tidy past Intent, in a fix run and in a run that goes on by itself (WP29)",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  }
+ ]
+}

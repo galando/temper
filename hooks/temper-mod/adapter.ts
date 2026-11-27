@@ -15,7 +15,7 @@ import { renderReport } from './core/report'
 import type { RunFacts } from './core/rules'
 import { VIEW_VERSION, parseRunView } from './core/runview'
 import type { RunView } from './core/runview'
-import { sectionText } from './core/section'
+import { NO_RUN, sectionText } from './core/section'
 import { cliStage } from './core/stages'
 import { buildView } from './core/view'
 import type { View } from './core/view'
@@ -215,7 +215,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const run: RunFacts | null =
     stage === null || g === null
       ? null
-      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage }
+      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage, adhocKind: g.adhocKind }
   return {
     ...idle,
     failOpen: run === null,
@@ -228,7 +228,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     at,
     decisions: decisionsOf(book, at.run),
     answer: currentAnswer(book, at, rv.ask?.question.question ?? null),
-    allowed: [...allowedCalls(book, at), ...rv.next.calls, ...rv.next.steps],
+    allowed: [...allowedCalls(book, at), ...rv.next.calls, ...rv.next.steps, ...(rv.next.after ?? [])],
     restart: restartFor(book, at) !== null,
     drift: driftOf(book, at.run, used),
   }
@@ -254,11 +254,11 @@ export async function keptReport(io: Io): Promise<string | null> {
 }
 
 // The line of the system prompt for a /temper:fix run, where the mod stands aside (see loadSnapshot).
-export const FIX_RUN = 'Phase: a /temper:fix run. The Temper bar and its guard stand aside for it: ask every gate in the conversation, as commands/fix.md says.'
+export const FIX_RUN = 'Stage: a /temper:fix run. The Temper bar and its guard stand aside for it: ask every gate in the conversation, as commands/fix.md says.'
 
 export function composeText(snap: Snapshot): string {
   if (snap.runCommand === 'fix' && snap.run === null) {
-    return sectionText({ enforcement: snap.enforcement, view: null }).replace('Phase: none. No Temper run is active.', FIX_RUN)
+    return sectionText({ enforcement: snap.enforcement, view: null }).replace(NO_RUN, FIX_RUN)
   }
   return sectionText({ enforcement: snap.enforcement, view: snap.run === null ? null : viewOf(snap), line: snap.line })
 }

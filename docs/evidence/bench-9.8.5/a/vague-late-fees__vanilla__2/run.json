@@ -1,0 +1,35 @@
+{
+  "task": "vague-late-fees",
+  "arm": "vanilla",
+  "rep": 2,
+  "base": "a4c2cb5b50e65b097a895ac3523cecf6a9436081",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": false,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.5553100000000001
+  },
+  "cost_usd": 0.5553,
+  "cost_results": "last (cumulative)",
+  "wall_s": 119,
+  "api_s": 158,
+  "turns": 9,
+  "sessions": 2,
+  "questions": 0,
+  "facts_total": 6,
+  "facts_elicited": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "owner_replies": 1,
+  "person_cost_usd": 0.028,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": null
+}

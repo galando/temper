@@ -2,7 +2,7 @@
 #
 # verify-tests-ran.sh — pre-commit check-green gate.
 #
-# Refuses a commit if the latest build state is not past Check (i.e. /temper:check
+# Refuses a commit if the latest build state is not past Check (i.e. the Check stage of the run
 # has not passed for the staged change). The check sentinel is the `stage` field in
 # .temper/build-state.json: "check_complete", or "commit_complete", the one stage after it
 # (Commit opened a pull request and the run is at Pipeline, whose fix rounds commit too).
@@ -54,7 +54,7 @@ print(d.get('stage', '__missing__'))
       # State present but stage is not green (e.g. build_complete, plan_complete).
       # This is the fail-closed path.
       echo "BLOCK: latest Temper stage is '${stage}', not check_complete (or commit_complete after it)." >&2
-      echo "Run /temper:check before committing." >&2
+      echo "Run the Check stage (/temper:temper takes up the run) before committing." >&2
       return 2
       ;;
   esac

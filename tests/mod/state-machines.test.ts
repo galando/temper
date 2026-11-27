@@ -6,7 +6,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { enforces, guardsRun, idleSnapshot } from '../../hooks/temper-mod/adapter'
 import type { Snapshot } from '../../hooks/temper-mod/adapter'
-import { ANSWER_LOOKS, STOPPED, drive, lookAtAgents } from '../../hooks/temper-mod/core/driver'
+import { ANSWER_LOOKS, STOPPED, drive, lookAtAgents, saved } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 import { adhocOpen, evaluate, trivialExit } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RunFacts } from '../../hooks/temper-mod/core/rules'
@@ -16,7 +16,7 @@ import { stageToast } from '../../hooks/temper-mod/core/view'
 import { FEATURE_DENY } from '../../hooks/temper-mod/core/session'
 import { register } from '../../hooks/temper-mod/register'
 import { SPEC, deriveView, questionOf, runFiles } from './run-files'
-import { cliTo, world } from './world'
+import { NO_RUN_VIEW, cliTo, world } from './world'
 
 const CLI = '/home/u/.claude/plugins/temper/scripts/temper'
 // The test runs where timers are (the lib of the type check has none).
@@ -104,8 +104,10 @@ function engine(files: Record<string, string>) {
     // The plugin's CLI: `temper go` answers from the list, every other call passes.
     process: {
       spawn: ({ argv }: { argv: string[] }) => {
-        const out = argv.at(-1) === 'go' ? JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }) : ''
-        if (argv.at(-1) !== 'go') log.push(`ran ${argv.slice(1).join(' ')}`)
+        // `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+        const isGo = argv.at(-1) === 'go' || (argv.at(-2) === 'go' && argv.at(-1) === '--taken-up')
+        const out = isGo ? JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }) : ''
+        if (!isGo) log.push(`ran ${argv.slice(1).join(' ')}`)
         return { async *[Symbol.asyncIterator]() { yield { text: out } }, result: Promise.resolve({ code: 0 }) }
       },
     },
@@ -216,7 +218,8 @@ function port(goes: GoOut[], o: { ran?: (call: string) => { code: number; out?: 
   const p: Port = {
     run: async call => {
       log.push(call)
-      if (call.endsWith(' go')) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'done' }) }
+      // `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+      if (call.endsWith(' go') || call.endsWith(' go --taken-up')) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'done' }) }
       const r = o.ran?.(call) ?? { code: 0 }
       return { code: r.code, out: r.out ?? '' }
     },
@@ -272,19 +275,19 @@ describe('C6: the person\'s interrupt ends the drive STOPPED, whichever step saw
 })
 
 describe('C7: every look of a wait counts toward its bound', () => {
-  test('the same after calls asked for again changed nothing: they run once, and the run is handed on', async () => {
+  test('the same after calls asked for again changed nothing: they run once, and the run stops saved (WP16)', async () => {
     const after = [`${CLI} task gate 3 --model opus --ms {ms}`]
     const wait: GoOut = { action: 'wait', stage: 'build', tasks: [{ after }] }
     const { p, log } = port([wait, wait, wait, wait])
     const end = await drive(p, CLI, null)
-    expect(end).toEqual({ kind: 'handback', args: 'next', why: 'the after calls of the waiting tasks changed nothing' })
+    expect(end).toEqual(saved('the after calls of the waiting tasks changed nothing'))
     expect(log.filter(l => l.includes('task gate 3'))).toEqual([`${CLI} task gate 3 --model opus --ms none`])
   })
 
   test('a wait whose after calls change every time is still bounded by the waits', async () => {
     const waits: GoOut[] = Array.from({ length: 200 }, (_, i) => ({ action: 'wait', stage: 'build', tasks: [{ after: [`${CLI} task gate ${i} --ms {ms}`] }] }))
     const { p, log } = port(waits)
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'the run waited too long' })
+    expect(await drive(p, CLI, null)).toEqual(saved('the run waited on its tasks for more than 120 looks'))
     expect(log.filter(l => l.includes('task gate')).length).toBe(120)
   })
 })
@@ -338,13 +341,16 @@ describe('C11: the request kept at /temper:temper is used up by the state init t
   const init = (slug: string, feature: string) => `${CLI} state init ${slug} --feature '${feature}'`
   test('after that run, another state init is not held to the old request', async ($, on) => {
     const api = $ as unknown as Api
-    world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
     await api.session.start(START)
     await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
     expect(await sh(api, init('pp', 'Partial refunds'))).toBe(FEATURE_DENY)
     expect(await sh(api, init('pp', REQ))).toBeUndefined()
-    // The run never left Intent: the TRIVIAL exit clears it, and the next run starts from other words.
-    expect(await sh(api, `${CLI} state clear`)).toBeUndefined()
+    // WP17: the run never left Intent and is closed by the CLI (a trivial request, `intent trivial --close`, which no
+    // guard sees: the mod lets no state clear through at Intent), and the next run starts from other words.
+    expect(await sh(api, `${CLI} state clear`)).toMatch(/do not clear or archive/)
+    w.files.delete('.temper/build-state.json')
+    w.files.set('.temper/view.json', NO_RUN_VIEW)
     expect(await sh(api, init('other', 'Export invoices as CSV'))).toBeUndefined()
   })
 })

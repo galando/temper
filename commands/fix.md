@@ -11,11 +11,12 @@ the pipeline of `/temper`, with RCA in place of Intent and Plan, and Fix in plac
 
 **First output.** Look at your system prompt for a line that starts with `Temper enforcement:`. With
 none, your first line is exactly `Temper enforcement is off here (no mods support); continuing with
-prompt based phases.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
-off (turned off by the user); continuing with prompt based phases.` With `active`, say nothing about
+prompt based stages.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
+off (turned off by the user); continuing with prompt based stages.` With `active`, say nothing about
 it. Say it once per conversation. With the Temper mod, the mod stands aside in a `/temper:fix` run:
 it draws nothing for it and judges none of its moves, but nothing goes around the native commit hook.
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 ## Usage
 
@@ -32,14 +33,16 @@ regression test is a RED then GREEN pair), Review and Check are the same stages 
 
 ## 1. RCA (before the run exists)
 
-First run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`. When it lists `setup`, run those calls
+First run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`; when its `say` starts with `Temper 9.8.5 asks twice`,
+say that one sentence first, as it is. When it lists `setup`, run those calls
 first, each once, as the Start section of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` says: they
 install the native commit hook, without which nothing gates the fix's commit.
 
 With no arguments and a fix run active (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get command`
-prints `fix`), skip to step 2. With the mod loaded, the mod carries a fix itself (the run driver, `docs/mod.md`) and
-hands it here with `next`, `discuss <the person's words>` or `chose <label>` for what needs you: with a fix run active,
-skip to step 2 and do as the Arguments of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` say for that word. A `/temper` run that is active is not this command's: say so in one
+prints `fix`), skip to step 2. With the mod loaded, the mod carries a fix itself (the run driver, `docs/mod.md`), and
+`/temper:fix` with no words takes an active fix run up there; it hands one step here as `step <kind> <option id>`: do
+that one step as the Arguments of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` say, then end the turn with the line
+`Type /temper:fix to go on.` A `/temper` run that is active is not this command's: say so in one
 line and ask its `restart` question from `temper next --json`.
 
 Pick the bug's slug first (letters, digits, `.`, `_` or `-`; a ticket key keeps its case, as in
@@ -53,34 +56,25 @@ RCA file: .temper/specs/{bug-slug}/rca.md
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
 ```
 
-The agent writes its findings to that file and returns one line. Then run, in one Bash call, and print
-the panel the first call prints, verbatim (the CLI draws it from `rca.md`):
+The agent writes its findings to that file and returns one line. Then run, in one Bash call:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/scripts/temper panel rca .temper/specs/{bug-slug}/rca.md
-${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {bug-slug} --command fix
+${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {bug-slug} --command fix --feature '{the bug as the person typed it}'
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {model} --ms {ms}
 ```
 
-`{ms}` is filled as `/temper:temper`'s agent bullet says.
-
-When the git pack is on and `git branch --show-current` prints main or master, run
-`git checkout -b fix/{bug-slug}`.
+`{ms}` is filled as `/temper:temper`'s agent bullet says; the bug is one shell quoted word, each `'` in it written as
+`'\''`. Print no panel and make no branch: the card of the first question shows what `rca.md` says, and the answer
+that approves the fix makes the branch (off main or master only).
 
 ## 2. The loop
 
-From here `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` (the compact form of `temper next --json`) drives the run: its first question is the
-RCA question ("Proceed to Fix"), then the Fix stage, Review, Check and the commit, with every
-question's exact options. Follow the sections "The loop", "Every question" and "Agents" of
+From here `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` (the compact form of `temper next --json`) drives the run. A clean
+bug run asks twice: the root cause with the fix it proposes (the approval: Approve and fix lets the run go on by
+itself to the commit), then the commit. Follow the sections "The loop", "Every question" and "Agents" of
 `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` (read them now; that file was not filled in when you read
 it: wherever it writes the CLAUDE_PLUGIN_ROOT variable, use the folder that holds
-${CLAUDE_PLUGIN_ROOT}/scripts/temper). Two things are this command's own:
-
-- **A change typed at the RCA question** (for example "look at the auth module instead") runs the RCA
-  agent again with that direction and the same `RCA file:` line, prints the panel
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper panel rca .temper/specs/{bug-slug}/rca.md` draws, and asks `next` again.
-- **The commit:** the commit message is `fix({scope}): {description}`, then the lines
-  `Root cause: {explanation}` and `Regression test: {test name}`, and `Closes JIRA-123` or
-  `Fixes #456` when there is one. Stage only the files the fix changed, the regression test and the
-  spec folder; never `git add -A` or `git add .`, and never `git add -f` over a gitignored spec
-  folder. After the commit say "Committed: {hash} / Branch: {branch}. Temper does not push."
+${CLAUDE_PLUGIN_ROOT}/scripts/temper). A call that prints a `VERDICT:` line recorded a verdict, whatever its exit code:
+it is no failure. A change typed at the root cause question is the question's `typed` calls, as everywhere: the CLI
+then launches the root cause agent again with it. The commit is the commit question's: its card shows the message the
+CLI drafted from `rca.md`. After the commit say "Committed: {hash} / Branch: {branch}. Temper does not push."

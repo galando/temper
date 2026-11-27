@@ -13,25 +13,24 @@ the plugin folder.
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/fix.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full fix methodology. Follow
-   it exactly; nothing here overrides it. Load the enabled packs and validate the fix
-   approach against their rules before implementing. Before writing framework-specific
-   code, apply the `source-driven-development` skill (verify calls against current
-   docs, don't trust trained-in memory).
+   it exactly; nothing here overrides it. Read the pack files your prompt lists on its `Packs:` line and
+   validate the fix approach against their rules before implementing. Check a framework call against the version
+   the project pins before you write it.
 2. Write a regression test for the scenario `rca.md` names — it MUST FAIL before the
    fix. Fix evidence maps onto the `build` gate (a regression test is exactly a
    RED-then-GREEN pair; the "no unchecked tasks" requirement is skipped automatically —
    fixes have no `tasks.md`). Record as you go:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label HEURISTIC    # failing, before the fix
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd '<the exact test command>' --exit 0 \
-     --phase green --label PROVEN  # passing, after the fix
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "regression test" --phase red -- <the exact test command>    # failing, before the fix
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "regression test" --phase green -- <the exact test command>  # passing, after the fix
    ```
+   The CLI runs the command and records the exit code it saw; a run recorded with `evidence add --exit` is a claim
+   no gate counts (9.8.5).
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
-   As soon as RED is confirmed, also record the test's path — this arms the write
+   As soon as RED is confirmed, also record the test's path — this turns on the write
    shield (`protect-regression-test.sh` blocks you from editing that file; fix the
    code, not the test):
    ```
@@ -41,12 +40,12 @@ the plugin folder.
    `code-review-graph` MCP server is available, use `get_impact_radius_tool`
    (`[PROVEN]`), else grep-based detection (`[HEURISTIC]`). Fix same-pattern
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
-4. **A file outside the fix: the person decides first.** The fix's files are the regression
-   test and the files `rca.md` names (the cause, the same-pattern occurrences, the related
-   files). Before you change any other file, stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
-   why the fix needs it, and the change you would make. The orchestrator asks the person and
-   launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
-   answer; `revert` means fix without that file, `allow-once` allows one edit.
+4. **A file outside the fix: the person decides first.** The fix's files are the regression test and the files `rca.md`
+   names (the cause, the same-pattern occurrences, the related files). Before you change any other file, stop: do not
+   write it another way. Record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}'
+   --change '{the change}'` (why the fix needs it) and return. The CLI asks the person and launches you again with one
+   `Drift decision: {path}: {add|revert|allow-once}` line per answer; `revert` means fix without that file, `allow-once`
+   allows one edit.
 5. **The lesson** (9.8.0, written by you, not by the orchestrator at the commit): once the test is GREEN, append one
    entry for this fix to `.temper/lessons.md` (create it with a `# Lessons` header when it is absent) in the format of
    `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`, Commit + record; `Fix:` is one line on what changed (the commit comes
@@ -87,8 +86,6 @@ TEST row, and every blocker is a row of the `BLOCKERS` section:
 | {file}                                                                   |
 +--- BLAST RADIUS (N) ---+-------------------------------------------------+
 | {consumers} consumers; same-pattern {n}/{m} — {file: each occurrence}    |
-+--- DRIFT (N) ---+--------------------------------------------------------+
-| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+
 | {what stops the fix, and what it needs}                                  |
 +--------------------------------------------------------------------------+

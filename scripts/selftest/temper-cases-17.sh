@@ -25,24 +25,23 @@ assert_exit "A1: with no run state a loop is refused (nothing to send back)" 1 "
 # --- A2, A5, A12, A15. A step back by state set next_stage does what a state loop does: one way back ---
 fresh; gpass intent plan build review check
 for s in build review check commit pipeline; do printf '[{"claim": "row of %s", "exit_code": 0}]\n' "$s" > ".temper/evidence/$s.json"; done
-_setj .temper/build-state.json "d['stage'] = 'check_complete'; d['next_stage'] = 'commit'; d['end_report'] = 'html'; d['built_before'] = 'abc'; d['enter'] = 'review'"
+_setj .temper/build-state.json "d['stage'] = 'check_complete'; d['next_stage'] = 'commit'; d['end_report'] = 'html'"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed"}}, "tasks": {}}\n' > .temper/groups.json
 assert_exit "A2: state set next_stage to an earlier stage goes back" 0 "$TEMPER" state set next_stage build
 assert_eq "A2: it clears the evidence of the stages it redoes, as a loop does (A15: commit and pipeline too)" "0|0|0|0|0" \
   "$(_rows .temper/evidence/build.json)|$(_rows .temper/evidence/review.json)|$(_rows .temper/evidence/check.json)|$(_rows .temper/evidence/commit.json)|$(_rows .temper/evidence/pipeline.json)"
-assert_eq "A2: and moves a door's entry back to the stage, as a loop does" "build" "$(_st enter)"
 assert_eq "A5: the bookkeeping stage is the stage before the one the run is at again (no longer check_complete)" "design_complete" "$(_st stage)"
 assert_eq "A12: a run sent back from Commit shows its report again: end_report is gone" "-" "$(_st end_report)"
 "$TEMPER" state set next_stage plan >/dev/null 2>&1
-assert_eq "A2: going back before Build ends the grouped run and forgets the earlier build, as a loop does" "no|" \
-  "$([[ -f .temper/groups.json ]] && echo yes || echo no)|$(python3 -c "import json; print(json.load(open('.temper/build-state.json')).get('built_before', ''))")"
+assert_eq "A2: going back before Build ends the grouped run, as a loop does (WP28: no built_before to forget)" "no" \
+  "$([[ -f .temper/groups.json ]] && echo yes || echo no)"
 assert_eq "A5: back at Plan the stage is intent_complete" "intent_complete" "$(_st stage)"
 fresh; gpass intent plan build review check; _at check
 _setj .temper/build-state.json "d['stage'] = 'review_complete'"
 printf '[{"claim": "x", "exit_code": 0}]\n' > .temper/evidence/commit.json
 "$TEMPER" state loop check build --reason x >/dev/null 2>&1
 assert_eq "A5, A15: a loop rewrites the stage too, and clears Commit's evidence" "design_complete|0" "$(_st stage)|$(_rows .temper/evidence/commit.json)"
-fresh; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _at check
+fresh; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _base_known; _at check
 printf '[{"claim": "x", "exit_code": 0}]\n' > .temper/evidence/commit.json
 "$TEMPER" state loop check fix --reason x >/dev/null 2>&1
 assert_eq "A5, A15: in a fix run a loop to Fix clears Commit's evidence and the stage is rca_complete" "0|rca_complete" "$(_rows .temper/evidence/commit.json)|$(_st stage)"
@@ -70,9 +69,11 @@ for k in stage command parked adhoc adhoc_done redo stage.x adhoc.stage; do
 done
 assert_eq "A6: the refused writes changed nothing" "started|temper|-" "$(_st stage)|$(_st command)|$(_st adhoc)"
 assert_exit "A6: run_mode takes interactive or autonomous only" 1 "$TEMPER" state set run_mode fast
-assert_exit "A6: run_mode autonomous is taken" 0 "$TEMPER" state set run_mode autonomous
+assert_exit "A6: run_mode autonomous is refused away from the approval (WP11)" 1 "$TEMPER" state set run_mode autonomous
 assert_exit "A6: pipeline_round counts one up at a time: 3 after round 1 is refused" 1 "$TEMPER" state set pipeline_round 3
 assert_exit "A6: pipeline_round is a number" 1 "$TEMPER" state set pipeline_round two
+# WP10: each call above spent a CI fix round of the budget (a call refused for its own reason has spent its repeat)
+"$TEMPER" budget grant --key pipeline --reason 'the refused calls spent their rounds' >/dev/null 2>&1
 assert_exit "A6: pipeline_round 2 after round 1 is taken" 0 "$TEMPER" state set pipeline_round 2
 assert_exit "A6: pipeline_round never goes down" 1 "$TEMPER" state set pipeline_round 1
 mkdir -p reg; echo 'x' > reg/a_test.sh; echo 'y' > reg/b_test.sh
@@ -86,8 +87,11 @@ assert_exit "A6: \"\" lifts it" 0 "$TEMPER" state set regression_test ""
 assert_exit "A6: once lifted, another file is taken" 0 "$TEMPER" state set regression_test reg/b_test.sh
 rm -rf reg
 rm -f .temper/build-state.json
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _a7_none="$([[ -f .temper/build-state.json ]] && _st ran_unattended || echo -)"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "A7: run_mode autonomous set with no run state yet still records ran_unattended" "True" "$(_st ran_unattended)"
+assert_eq "A7: run_mode autonomous is refused with no run state, and at the approval records ran_unattended and the stage (WP11)" \
+  "none=-|True|plan" "none=$_a7_none|$(_st ran_unattended)|$(_st unattended_from)"
 
 # --- A8. A group is passed exactly while its gate says PASS ---
 f9_tasks | m_setup
@@ -171,21 +175,23 @@ _i17 "Logs hold customer names: mask them?" "Logs hold customer names" "Logs hol
 assert_eq "A14: the concern whose title the question names is resolved, not the wordier one" "1|0" \
   "$(sed -n '/^### Logs hold customer names$/,/^### Logs hold customer names in/p' .temper/specs/demo/design.md | grep -c '^resolved: A$')|$(sed -n '/in traces too/,$p' .temper/specs/demo/design.md | grep -c '^resolved:')"
 
-# --- A17, A18. The step back budget: loop_step.budget, the rule temper next offers it by ---
-assert_eq "A17: budget: build->plan once; check->build takes fix.max-loops when set; else loops.max-per-type (default 2)" "1|5|3|2|2" "$(python3 -c "
-import sys
-sys.path.insert(0, sys.argv[1])
-from loop_step import budget
-c = lambda vals: (lambda k, d='': vals.get(k, d))
-print('|'.join(str(x) for x in [budget('build', 'plan', c({'loops.max-per-type': '5'})), budget('check', 'build', c({'loops.max-per-type': '3', 'fix.max-loops': '5'})),
-      budget('review', 'build', c({'loops.max-per-type': '3', 'fix.max-loops': '5'})), budget('review', 'build', c({})), budget('review', 'build', c({'loops.max-per-type': 'x'}))]))" "$REPO_ROOT/scripts")"
+# --- A17, A18. The step back budget: the limit of the key gate:<from> (scripts/budget.py), the rule temper next offers it by ---
+_a17room() { python3 "$REPO_ROOT/scripts/budget.py" room "$1" | python3 -c "import json, sys; print(json.load(sys.stdin)['limit'])"; }
+fresh; _a17="$(_a17room gate:check)"
+printf 'budget:\n  per-failure: 5\n' >> .claude/temper.config; _a17+="|$(_a17room gate:check)|$(_a17room gate:review)"
+sed -i 's/^  per-failure: 5$/  per-failure: x/' .claude/temper.config; _a17+="|$(_a17room gate:review)"
+assert_eq "A17: budget: every key takes budget.per-failure (default 2; a value that is no whole number counts as 2)" "2|5|5|2" "$_a17"
 fresh; gpass intent plan; _at build
 assert_exit "A17: the first step back from Build to Plan is taken" 0 "$TEMPER" state loop build plan --reason x
 _at build
-assert_exit "A17: a second one is refused, as temper next says (build->plan is once per run)" 1 "$TEMPER" state loop build plan --reason y
+assert_exit "A17: a second one is taken too: from a Build that did not fail it spends nothing (WP10)" 0 "$TEMPER" state loop build plan --reason y
+_at build; gfail build "tests pass" "unit failed"; "$TEMPER" state loop build plan --reason z >/dev/null 2>&1
+_at build; gfail build "tests pass" "unit failed"; "$TEMPER" state loop build plan --reason z >/dev/null 2>&1
+_at build; gfail build "tests pass" "unit failed"
+assert_exit "A17: the third from a failed Build is refused, as temper next says (gate:build has no room)" 1 "$TEMPER" state loop build plan --reason w
 fresh; gpass intent plan build review; _at review
 "$TEMPER" state loop review build --reason x >/dev/null 2>&1
-sed -i 's/^  max-per-type: 2$/  max-per-type: 3/' .claude/temper.config
+printf 'budget:\n  per-failure: 3\n' >> .claude/temper.config
 _at review
 "$TEMPER" state loop review build --reason y >/dev/null 2>&1
 assert_eq "A18: each step stores the budget as it is now" "2|3" \
@@ -213,8 +219,8 @@ assert_eq "A16: a holder that is alive is waited for past the wait: the row land
   "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")"
 mkdir -p .temper/.lock; printf '%s.1' "$HOLDER" > .temper/.lock/owner
 out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "past a stuck holder" 2>&1)"; rc=$?
-assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S is written past with a WARN (a stuck holder never wedges a run)" "0|1|yes" \
-  "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
+assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S fails the write, which writes nothing (9.8.5, Q9)" "75|1|yes" \
+  "$rc|$(printf '%s' "$out" | grep -c 'FAIL.*nothing was written')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf .temper/.lock
 
@@ -236,7 +242,7 @@ mkdir -p .temper/.lock; printf '%s.1' "$LIVE" > .temper/.lock/owner
 python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t))"
 out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "beside an old live holder" 2>&1)"
 assert_eq "A16: a lock older than 30 s whose owner is alive is not broken as stale (the holder keeps it)" "$LIVE.1|1" \
-  "$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+  "$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'FAIL.*lock')"
 kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
 rm -rf .temper/.lock
 for i in 1 2 3 4 5 6; do "$TEMPER" evidence add --stage build --claim "release $i" >/dev/null 2>&1 & done; wait

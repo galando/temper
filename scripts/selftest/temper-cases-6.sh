@@ -7,6 +7,8 @@
 # --accept-foreign and a reason (recorded like an override, shown by temper report); (d) the group gate checks that every passed
 # task's commit is still on the group branch; (e) a FAIL without a foreign commit discards the attempt's worktree and retries or
 # escalates (D-03).
+# run on its own (9.8.5), case 5's helpers come from the generated file; after case 5 they are defined already
+declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
 T2W=".claude/worktrees/temper-demo-T2"
 d_setup() { f_setup; }
 d_red() { ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1; }
@@ -74,7 +76,7 @@ assert_exit "D-08: a task in another group still starts" 0 "$TEMPER" task start 
 S_BEFORE="$(d_state)"
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 assert_eq "D-08: reopen is refused while the foreign sha is on the branch, naming it and both ways out" "1|1|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -q "${FSHA:0:7}" && echo 1)|$(printf '%s' "$out" | grep -c -- '--accept-foreign')|$(printf '%s' "$out" | grep -c 'rebase --autostash --onto')"
+  "$rc|$(printf '%s' "$out" | grep -c "${FSHA:0:7}" >/dev/null && echo 1)|$(printf '%s' "$out" | grep -c -- '--accept-foreign')|$(printf '%s' "$out" | grep -c 'rebase --autostash --onto')"
 assert_eq "D-08: the refused reopen changed nothing (group still parked, task still failed, branch untouched)" "parked|failed|$S_BEFORE" \
   "$(d_pfield status)|$(st_field 1 status)|$(d_state)"
 out="$("$TEMPER" group reopen G1 --task 1 --accept-foreign "${FSHA:0:7}" 2>&1)"; rc=$?
@@ -207,7 +209,7 @@ done
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 GL="$(printf '%s\n' "$out" | grep -E '^NEXT: temper task gate 2' | head -1 | sed -E "s#^NEXT: temper#$TEMPER#; s# *\(.*##")"
 assert_eq "M3: after a retry-chain park and reopen, the reopen offers the gate of the finished sibling" "0|1" "$rc|$([[ -n "$GL" ]] && echo 1 || echo 0)"
-assert_eq "M3: the gate line of the sibling carries the model its agent ran on" "1" "$(grep -c -- '--model claude-haiku-5-5' <<<"$GL")"
+assert_eq "M3: the gate line of the sibling carries the model its agent ran on" "1" "$(grep -c -- '--model sonnet' <<<"$GL")"
 assert_exit "M3: the printed gate line passes the sibling" 0 bash -c "$GL"
 assert_eq "M3: the sibling is passed" "passed" "$(st_field 2 status)"
 
@@ -264,11 +266,11 @@ assert_eq "M5: integrate refuses a group branch holding an unrecorded commit, na
   "$rc|$(printf '%s' "$out" | grep -c "${ASHA:0:7}")|$(git rev-parse HEAD)"
 
 # M6: the verdict reads no environment variable for the overrides file
-assert_eq "M6: no TEMPER_OVERRIDES_FILE in scripts/temper or scripts/task_ops.py" "0" "$(cat "$TEMPER" "$REPO_ROOT/scripts/task_ops.py" | grep -c 'TEMPER_OVERRIDES_FILE')"
+assert_eq "M6: no TEMPER_OVERRIDES_FILE in scripts/temper or scripts/task_ops.py" "0" "$({ _cli_text; cat "$REPO_ROOT/scripts/task_ops.py"; } | grep -c 'TEMPER_OVERRIDES_FILE')"
 
 # the undo machinery is gone from the CLI
 assert_eq "D-08: no automatic-undo code is left in scripts/temper" "0" \
-  "$(grep -c 'stillon\|reverthint\|TEMPER_UNDO_HEAL\|reverted_foreign\|merge_info\|temper-undo' "$TEMPER")"
+  "$(grep -c 'stillon\|reverthint\|TEMPER_UNDO_HEAL\|reverted_foreign\|merge_info\|temper-undo' < <(_cli_text))"
 setup
 
 # --- Grouped Build: whole-diff review fixes (F1-F5) and the fail-closed spec path ---
@@ -340,7 +342,7 @@ assert_eq "F2: a worktree with uncommitted work is kept and named" "yes|1" \
 assert_exit "F2: the re-planned run starts G1 again" 0 "$TEMPER" group start G1
 
 # fail closed: a run state that lost spec_path (an agent rewrote build-state.json) refuses every gate with the repair
-setup; "$TEMPER" state init demo >/dev/null 2>&1
+setup; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 python3 -c "
 import json; p='.temper/build-state.json'; d=json.load(open(p)); d.pop('spec_path', None); json.dump(d, open(p, 'w'))"
 out="$("$TEMPER" gate check 2>&1)"; rc=$?
@@ -419,7 +421,7 @@ d_setup
 FSHA="$(git -C "$T1W" rev-parse HEAD)"; d_green 1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1
 out="$("$TEMPER" group reopen G1 --task 2 2>&1)"; rc=$?
 assert_eq "reopen: naming another task is refused while the parked commit is in Task 1's kept worktree" "1|1|parked" \
-  "$rc|$(printf '%s' "$out" | grep -q "^FAIL: group G1 is parked on.*${FSHA:0:7}" && echo 1)|$(d_pfield status)"
+  "$rc|$(printf '%s' "$out" | grep -c "^FAIL: group G1 is parked on.*${FSHA:0:7}" >/dev/null && echo 1)|$(d_pfield status)"
 out="$("$TEMPER" group reopen G1 --task 2 --accept-foreign "${FSHA:0:7}" --reason "reviewed, it stays" 2>&1)"; rc=$?
 assert_eq "reopen: a sha accepted from any kept worktree of the group is accepted" "0|running" "$rc|$(d_pfield status)"
 # pytest at the start of the Test command: exit 2 is no RED
@@ -510,7 +512,7 @@ st_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 3 >/dev/null 2>&1
 out="$("$TEMPER" schedule 2>&1)"
 assert_eq "None FAIL: both running tasks wait for their agents in the schedule" "1|1" \
-  "$(grep -c 'Task 1 (running on claude-haiku-5-5: wait for its agent' <<<"$out")|$(grep -c 'Task 3 (running on claude-haiku-5-5: wait for its agent' <<<"$out")"
+  "$(grep -c 'Task 1 (running on sonnet: wait for its agent' <<<"$out")|$(grep -c 'Task 3 (running on sonnet: wait for its agent' <<<"$out")"
 assert_eq "None FAIL: the schedule names no task gate for a running task" "0" "$(grep -c 'task gate' <<<"$out")"
 WT1="$(st_field 1 worktree)"
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?

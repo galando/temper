@@ -1,0 +1,383 @@
+// The broken scripted project: the project of the replay (scripts/e2e/replay.ts), with no model cost, where every fault
+// is one of the environment or of the base: the plan is right (its Validate is the form both Maven rows accept) and the
+// reviewer finds nothing. Two scenarios state the final promises of rows D13 and D14 of docs/plans/one-go/done.md and
+// are expected to fail until phase 5 (scripts/selftest/expected-fail.txt).
+//
+// The project: backend/pom.xml wants JDK 24 (the enforcer rule [24,)) and binds a JaCoCo check; the shell has 21;
+// scripts/ensure-jdk24.sh --export prints what fixes it; the integration tests read IT_POSTGRES_PORT and need Postgres,
+// which is down (fake pg_lsclusters, pg_isready, pg_ctlcluster); the project's CI file names that service (on a port
+// of its own, which nothing listens on: the local cluster stands in for it in the proposed block), so the environment
+// check finds it down before any agent; its existing tests are LegacyTest, ClockTest and RetryTest. The config is the replay's: check.commands run the whole suite with the integration tests (the planted
+// bug score gates nothing).
+//
+// The faults the fixture plants (scripts/e2e/faketools.ts):
+//   TOOL_JDK unset             the wrong tool version: every mvn call fails the enforcer rule until a setup block exports it
+//   no $MOCK_DB/up             the service that is down: a verify without -DskipITs fails with Connection refused
+//   MOCK_RED=LegacyTest        a test that is red on the current code, on every tree
+//   MOCK_FLAKY_BASE=ClockTest  a flaky test: it fails the first time it runs and passes after
+//   MOCK_FLAKY_LATER=RetryTest (broken-flaky only) a test that passes on the base tree and fails once, the first time it
+//                              runs on another tree
+//
+//   broken-first-run (plain, driver), row D13: in this order, the first question is asked with no agent launched and
+//     names the tool version and the service; its recommended option adds the setup block; the block written to the
+//     config is byte equal to the block that question showed; the red test is named in a question before the planner is
+//     launched; no launch of the environment agent (gone at WP21) and no fix pass of temper:temper-build in the whole run; no call of the
+//     trace steps back to Plan; the last question is commit.confirm, with the red test and the first flaky test on the
+//     commit card; at most 4 dialogs.
+//   broken-flaky (plain), row D14: the second flaky test fails once at the first gate that runs it on another tree; the
+//     CLI ran it once more at once (the next mvn call is the same command on the same tree, before any agent), the
+//     ledger holds a row that calls it flaky, and no agent was launched for it; the last question is commit.confirm,
+//     and its commit card has a row that names it as flaky.
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import { MVN, POM, recordOf, toolRuns, withRemote } from './faketools'
+import type { ToolRun } from './faketools'
+import { orchestrate } from './loop'
+import { defaultPerson, idOf, pickId, withoutSetup, worldCheck } from './persons'
+import { expect, mavenAgents, mavenScript, planMd, promise, startMaven, stepsBackToPlan, tasksMd, withCheckLines } from './slow'
+import type { World } from './world'
+
+// the agent type of the environment agent, gone at WP21: no run launches it (its name built here, for the grep of WP21)
+const ENV_AGENT = 'temper:temper-' + 'env'
+import type { Json, Person } from './world'
+
+export const INTEGRATION = 'cd backend && mvn -s settings.xml verify'
+export const RED = 'LegacyTest'
+export const FLAKY = 'ClockTest'
+export const FLAKY_LATER = 'RetryTest'
+const ALLOWED = ['base.red', 'plan.approve', 'commit.confirm']   // the setup block, the red base, the approval, the commit
+
+export const CI_PORT = 54329   // the CI's own port for its Postgres: nothing listens on it here
+const CI_YML = `name: ci
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - ${CI_PORT}:5432
+    env:
+      IT_POSTGRES_PORT: \${{ job.services.postgres.ports[5432] }}
+    steps:
+      - run: cd backend && mvn -s settings.xml verify
+`
+// The sentence of the environment check in a question: its faults, without the proposed block that follows it.
+export const faultSentence = (text: string): string => /The environment check found [^\n]*?before any agent: ([^\n]*)/.exec(text)?.[1] ?? ''
+const testClass = (name: string): string => `class ${name} { void check() { } }\n`
+export const BROKEN_FILES: Record<string, string> = {
+  'README.md': '# demo\n', '.gitignore': '__pycache__/\ntarget/\n', 'backend/pom.xml': POM, 'backend/settings.xml': '<settings/>\n',
+  'backend/src/test/ItBase.java': 'class ItBase { String port = System.getenv("IT_POSTGRES_PORT"); }\n',
+  [`backend/src/test/java/${RED}.java`]: testClass(RED),
+  [`backend/src/test/java/${FLAKY}.java`]: testClass(FLAKY),
+  [`backend/src/test/java/${FLAKY_LATER}.java`]: testClass(FLAKY_LATER),
+  'scripts/ensure-jdk24.sh': '#!/usr/bin/env bash\n[ "$1" = --export ] && echo "export TOOL_JDK=24"\n',
+  // BLACKBOX-4: the service the project's files ask for, as its CI runs it
+  '.github/workflows/ci.yml': CI_YML,
+}
+// The config of the replay: the whole suite with the integration tests and a total it prints (WP19: the planted bug
+// score gates nothing, so no key turns it off).
+export const brokenConfig = (text: string): string =>
+  withCheckLines(text, `  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`)
+
+// The base tree of the late flaky test: the tree of the code (the pom's folder) at HEAD, the key the fake mvn compares.
+export const CODE_TREE = 'git rev-parse HEAD:backend'
+// The project, its fake tools and its faults. The base tree of the late flaky test is the code of the base commit, so
+// the commits of the run's spec and config leave it on the base.
+export function startBroken(w: World, later: boolean): { log: string; db: string; initConfig: string } {
+  const env: Record<string, string> = { MOCK_RED: RED, MOCK_FLAKY_BASE: FLAKY }
+  if (later) env.MOCK_FLAKY_LATER = FLAKY_LATER
+  const p = startMaven(w, BROKEN_FILES, { env, config: brokenConfig })
+  fs.writeFileSync(path.join(p.db, 'flaky-later.base'), `${w.sh(CODE_TREE).trim()}\n`)
+  return p
+}
+export const agents = () => mavenAgents({ plan: planMd(), tasks: tasksMd('', INTEGRATION) })
+
+// The text the person reads at a question: the question and its options. The card is not on the ask.
+const shown = (ask: Json): string =>
+  [String(ask.question?.question ?? ''), ...((ask.options ?? []) as Json[]).map(o => `${o.label} ${o.description ?? ''}`)].join('\n')
+// The card of a question: it sits on `next` and in the view (contracts.md, `card`), so the person reads it from
+// .temper/view.json when the question is asked, as accept.ts does.
+export const viewCard = (wd: World): Json | null => {
+  try {
+    return wd.exists('.temper/view.json') ? ((wd.json('.temper/view.json').card ?? null) as Json | null) : null
+  } catch {
+    return null
+  }
+}
+// The text of each row of each section of a card.
+export const cardRows = (card: Json | null): string[] =>
+  ((card?.sections ?? []) as Json[]).flatMap(s => ((s?.rows ?? []) as Json[]).map(r => String(r?.text ?? '')))
+// A commit card with a row for each name.
+export const commitCardLists = (card: Json | null, names: string[]): boolean =>
+  card?.kind === 'commit' && names.every(n => cardRows(card).some(r => r.includes(n)))
+// A commit card with a row that names the test and calls it flaky (row D14: shown at the commit).
+export const commitCardFlaky = (card: Json | null, name: string): boolean =>
+  card?.kind === 'commit' && cardRows(card).some(r => r.includes(name) && /flaky/i.test(r))
+// The setup: block of a config, as it stands in the file.
+const setupBlock = (config: string): string => {
+  const m = /^setup:\n(?:(?:[ \t].*)?\n)*/m.exec(config)
+  return m ? m[0].replace(/\n+$/, '\n') : ''
+}
+
+export const brokenFirstRun = (w: World): void => {
+  withRemote(w)
+  const p = startBroken(w, false)
+  const rec = recordOf(w)!
+  const asked: Json[] = []
+  const cards: (Json | null)[] = []   // the card of the view at each question
+  const types = (): string[] => rec.agents.map(a => a.type)
+  let redNamed = false
+  let redBeforePlan = false
+  const base = defaultPerson(ALLOWED)
+  const person: Person = (ask, wd) => {
+    asked.push(ask)
+    cards.push(viewCard(wd))
+    const text = shown(ask)
+    // WP20 (these pass from WP20 on; the scenario stays listed until WP21, row D13): the environment check names the
+    // wrong tool version and the service that is down in base.red before the first agent; after the repair of both by
+    // the setup block, the baseline names the one failing test in base.red before the planner; no agent works on
+    // either.
+    if (asked.length === 1) {
+      expect(idOf(ask) === 'base.red', `W20 the first question is base.red, the environment check before any agent (asked ${idOf(ask)}: ${text.slice(0, 160)})`)
+    }
+    if (text.includes(RED) && !redNamed) {
+      expect(idOf(ask) === 'base.red', `W20 the red test ${RED} is first named in base.red, as a red base (asked ${idOf(ask)}: ${text.slice(0, 160)})`)
+      expect(types().every(t => t === 'temper:temper-intent'),
+        `W20 the red base is named before the planner and with no agent launched for it (launched: ${types().join(', ') || 'none'})`)
+    }
+    if (asked.length === 1) {
+      expect(rec.agents.length === 0, `D13 the first question is asked with no agent launched (launched: ${types().join(', ')}; asked ${idOf(ask)})`)
+      expect(/JDK|Java/.test(text) && /\b24\b/.test(text), `D13 the first question names the tool version, JDK 24 (${idOf(ask)}: ${text.slice(0, 160)})`)
+      // BLACKBOX-4: the service is named as a fault of the environment check (the file that asks for it, its address,
+      // that it does not answer), not only inside the proposed block
+      const faults = faultSentence(text).split(/\.\s|$/)[0] ?? ''
+      expect(new RegExp(`the service postgres at 127\\.0\\.0\\.1:${CI_PORT} does not answer \\(\\.github/workflows/ci\\.yml names it\\)`).test(faults),
+        `D13 the first question names the service in the fault sentence of the environment check (${idOf(ask)}: ${text.slice(0, 240)})`)
+      const rec1 = ((ask.options ?? []) as Json[]).find(o => o.recommended === true)
+      expect(rec1?.id === 'add-setup', `D13 the recommended option of the first question adds the setup block (it is ${rec1?.id ?? 'none'})`)
+    }
+    if (asked.length === 2) {
+      const block = setupBlock(wd.exists('.claude/temper.config') ? wd.read('.claude/temper.config') : '')
+      expect(block !== '' && shown(asked[0]!).includes(block.trimEnd()), `D13 the setup block written to the config is byte equal to the block the first question showed (${JSON.stringify(block.slice(0, 120))})`)
+    }
+    // WP07: only a question asked while the planner had not been launched names the red test before it
+    expect(!types().includes('temper:temper-plan') || redBeforePlan, `D13 the red test ${RED} was named in a question before temper:temper-plan was launched (asked ${asked.map(idOf).join(', ')})`)
+    if (text.includes(RED)) redNamed = true
+    if (redNamed && !types().includes('temper:temper-plan')) redBeforePlan = true
+    expect(redNamed || !types().includes('temper:temper-plan'), `D13 the red test ${RED} is named in a question before temper:temper-plan is launched (asked ${asked.map(idOf).join(', ')})`)
+    expect(!types().includes(ENV_AGENT) && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
+    // WP20: the person goes on anyway at the red base (a recorded skip): the run reaches the commit with the red test
+    if (idOf(ask) === 'base.red' && text.includes(RED)) return pickId(wd, ask, 'go-on-anyway')
+    return base(ask, wd)
+  }
+  promise('D13', () => orchestrate(w, mavenScript(agents(), person)))
+  expect(redNamed, `D13 the red test ${RED} is named in a question before the planner (asked ${asked.map(idOf).join(', ')})`)
+  expect(!types().includes(ENV_AGENT) && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
+  const back = stepsBackToPlan(w)
+  expect(back.length === 0, `D13 no call of the trace steps back to Plan (${back[0] ?? ''})`)
+  const last = asked[asked.length - 1]
+  expect(last !== undefined && idOf(last) === 'commit.confirm', `D13 the last question is commit.confirm (${last ? idOf(last) : 'none'})`)
+  const card = cards[cards.length - 1] ?? null
+  expect(commitCardLists(card, [RED, FLAKY]),
+    `D13 the commit card of the view at commit.confirm lists the red test ${RED} and the flaky test ${FLAKY} in its rows (${JSON.stringify(cardRows(card)).slice(0, 200)})`)
+  expect(asked.length <= 4, `D13 the run asks at most 4 dialogs (${asked.length}: ${asked.map(idOf).join(', ')})`)
+  expect(withoutSetup(w.read('.claude/temper.config')) === withoutSetup(p.initConfig), 'D13 the config changed only in a setup: block, which the person added')
+  // WP07: the dialogs as the floor counts them, and the planner launched once (no step back to Plan)
+  expect(w.counts.dialogs <= 4, `D13 the run asks at most 4 dialogs as the floor counts them (${w.counts.dialogs}: ${JSON.stringify(w.counts.by_stage)})`)
+  const planners = w.counts.launches['temper:temper-plan'] ?? 0
+  expect(planners === 1, `D13 no step back to Plan: temper:temper-plan is launched once (${planners})`)
+  worldCheck(w)
+}
+
+// Where the late flaky test failed: the index of the failing call in the tool log, or -1 while it has not failed.
+function flakyFailure(db: string, log: string): { at: number; args: string } {
+  const mark = path.join(db, 'flaky-later.failed')
+  if (!fs.existsSync(mark)) return { at: -1, args: '' }
+  const before = Number(fs.readFileSync(mark, 'utf8').trim().split(/\s+/)[1] ?? '0')
+  const runs = toolRuns(log)
+  const at = runs.findIndex((r, i) => i >= before && r.suite && r.exit !== 0)
+  return { at, args: at >= 0 ? runs[at]!.args : '' }
+}
+
+// The rerun of row D14 (WP22 step 9: once more at once, on the same tree): the mvn call right after the failure at `at`
+// is the same command on the tree of the failure, before the next agent launch. `launchAt` is the number of tool runs
+// before that launch, or null when none came after the failure.
+export function reranAtOnce(runs: ToolRun[], at: number, launchAt: number | null): boolean {
+  const failed = runs[at]
+  const again = runs[at + 1]
+  if (failed === undefined || again === undefined) return false
+  return again.args === failed.args && again.tree !== '' && again.tree === failed.tree && (launchAt === null || at + 1 < launchAt)
+}
+
+export const brokenFlaky = (w: World): void => {
+  withRemote(w)
+  const p = startBroken(w, true)
+  const launches: { type: string; runs: number }[] = []   // each launch, with the number of tool runs before it
+  const watched = Object.fromEntries(Object.entries(agents()).map(([type, a]) => [type, ((wd: World, x: Json) => {
+    launches.push({ type, runs: toolRuns(p.log).length })
+    a(wd, x)
+  })]))
+  // Every row of every ledger, and of the gates, one JSON text a row.
+  let ledgers: string[] = []
+  const read = (wd: World): string[] => {
+    const rows: string[] = []
+    const add = (v: unknown): void => { if (Array.isArray(v)) for (const r of v) rows.push(JSON.stringify(r)) }
+    const files = wd.exists('.temper/evidence') ? fs.readdirSync(path.join(wd.dir, '.temper/evidence')).filter(f => f.endsWith('.json')).map(f => `.temper/evidence/${f}`) : []
+    for (const f of files) {
+      try {
+        add(JSON.parse(wd.read(f)))
+      } catch {
+        continue
+      }
+    }
+    try {
+      for (const g of Object.values(wd.json('.temper/gates.json'))) add((g as Json)?.requirements)
+    } catch {
+      // no gates yet
+    }
+    return rows
+  }
+  // The rerun: the next mvn call, on the same tree, before the next agent launch.
+  const check = (where: string): void => {
+    const f = flakyFailure(p.db, p.log)
+    if (f.at < 0) return
+    const next = launches.find(l => l.runs > f.at)
+    const runs = toolRuns(p.log)
+    expect(reranAtOnce(runs, f.at, next?.runs ?? null),
+      `D14 ${FLAKY_LATER} failed in \`mvn ${f.args}\` and the CLI did not run it once more at once, on the same tree, before ${next ? `launching ${next.type}` : where} (the next call: ${runs[f.at + 1]?.line ?? 'none'})`)
+    const fixers = launches.filter(l => l.runs > f.at && ['temper:temper-build', ENV_AGENT].includes(l.type))
+    expect(fixers.length === 0, `D14 no agent is launched for the flaky test (${fixers.map(l => l.type).join(', ')})`)
+  }
+  const flakyRow = (where: string): void => {
+    const rows = [...ledgers, ...read(w)].filter(l => l.includes(FLAKY_LATER) && /flaky/i.test(l))
+    expect(rows.length > 0, `D14 the ledger holds no row that calls ${FLAKY_LATER} flaky at ${where}`)
+  }
+  const base = defaultPerson()
+  let n = 0
+  let lastId = ''
+  let lastCard: Json | null = null
+  const person: Person = (ask, wd) => {
+    n++
+    lastId = idOf(ask)
+    lastCard = viewCard(wd)
+    ledgers = read(wd)
+    check(`asking ${idOf(ask)}`)
+    expect(n <= 12, `D14 the run asked more than 12 questions and ${FLAKY_LATER} never failed (${idOf(ask)})`)
+    return base(ask, wd)
+  }
+  promise('D14', () => {
+    try {
+      orchestrate(w, mavenScript(watched, person))
+    } catch (e) {
+      const m = (e as Error).message
+      if (m.startsWith('D14 ')) throw e
+      if (flakyFailure(p.db, p.log).at < 0) throw new Error(`D14 the run stopped before ${FLAKY_LATER} failed at a gate: ${m}`)
+      const where = `the run stopped (${m.split('\n')[0]!.slice(0, 120)})`
+      check(where)
+      flakyRow(where)
+      throw e
+    }
+  })
+  check('the end of the run')
+  expect(flakyFailure(p.db, p.log).at >= 0, `D14 ${FLAKY_LATER} failed at no gate: the fixture planted no fault`)
+  flakyRow('the end of the run')
+  expect(lastId === 'commit.confirm', `D14 the last question is commit.confirm (${lastId || 'none'})`)
+  expect(commitCardFlaky(lastCard, FLAKY_LATER),
+    `D14 the commit card at commit.confirm shows ${FLAKY_LATER} as flaky (its rows: ${JSON.stringify(cardRows(lastCard)).slice(0, 200)})`)
+  worldCheck(w)
+}
+
+// The registered names, and the modes each runs in (the runner leaves out a mode a scenario does not name).
+export const BROKEN_SCENARIOS: Record<string, { run: (w: World) => void; modes: string[] }> = {
+  'broken-first-run': { run: brokenFirstRun, modes: ['plain', 'driver'] },
+  'broken-flaky': { run: brokenFlaky, modes: ['plain'] },
+}
+
+// ---- the check of this file, on made up input -------------------------------------------------------------------------
+//
+//   bun scripts/e2e/broken.ts --check   asserts the faults of the fixture and the checks of the two scenarios on made up
+//                                       input, with no run of the CLI; exit 0 or 1
+
+function check(): number {
+  let fails = 0
+  const eq = (name: string, got: unknown, want: unknown): void => {
+    const ok = JSON.stringify(got) === JSON.stringify(want)
+    if (!ok) fails++
+    console.log(`${ok ? 'PASS' : 'FAIL'}: broken ${name}${ok ? '' : ` (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`}`)
+  }
+  // the fake mvn in a scratch copy of the project, with the late flaky test on and its base written as startBroken does
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'broken-check-'))
+  const tools = path.join(dir, 'tools')
+  const db = path.join(dir, 'db')
+  const proj = path.join(dir, 'project')
+  for (const d of [tools, db, proj]) fs.mkdirSync(d)
+  fs.writeFileSync(path.join(tools, 'mvn'), MVN, { mode: 0o755 })
+  const log = path.join(tools, 'calls.log')
+  fs.writeFileSync(log, '')
+  const env: Record<string, string> = {
+    PATH: `${tools}:${process.env.PATH ?? ''}`, HOME: dir, MOCK_LOG: log, MOCK_DB: db, TOOL_JDK: '24', MOCK_FLAKY_LATER: FLAKY_LATER,
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_NOSYSTEM: '1',
+  }
+  const sh = (cmd: string): { code: number; out: string } => {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: proj, env, encoding: 'utf8' })
+    return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
+  }
+  for (const [rel, text] of Object.entries(BROKEN_FILES)) {
+    fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true })
+    fs.writeFileSync(path.join(proj, rel), text)
+  }
+  sh('git init -q && git add -A && git commit -qm base')
+  fs.writeFileSync(path.join(db, 'flaky-later.base'), `${sh(CODE_TREE).out.trim()}\n`)
+  const suite = (): number => sh('cd backend && mvn -s settings.xml verify -DskipITs').code
+  sh('mkdir -p .temper/specs/report && echo intent > .temper/specs/report/intent.md && git add -A && git commit -qm spec')
+  eq(`the late flaky test passes after a commit of the spec alone: the code is still on the base`, suite(), 0)
+  sh('echo "class Shape { }" > backend/src/Shape.java && git add -A && git commit -qm code')
+  eq(`the late flaky test fails once, the first time it runs on another code tree, and passes after`, [suite(), suite()], [1, 0])
+  const real = toolRuns(log)
+  eq('each line of the tool log carries the tree it ran on, and a run again at once on it is the rerun of D14',
+    [real.every(r => /^[0-9a-f]{40}$/.test(r.tree)), reranAtOnce(real, real.length - 2, null)], [true, true])
+  // made up tool logs: the failure is the first line
+  const made = (...lines: string[]): ToolRun[] => {
+    const f = path.join(dir, 'made.log')
+    fs.writeFileSync(f, lines.map(l => `mvn ${l} exit=0 port=\n`).join(''))
+    return toolRuns(f)
+  }
+  const fail = 'verify -DskipITs jdk=24 db=up tree=t1'
+  eq('D14 rerun: the same command later, after another call, is no rerun (what the head of phase 2 passed with)',
+    reranAtOnce(made(fail, 'verify jdk=24 db=up tree=t1', fail), 0, null), false)
+  eq('D14 rerun: the next call on the same tree is the rerun', reranAtOnce(made(fail, fail), 0, null), true)
+  eq('D14 rerun: the next call on another tree is no rerun', reranAtOnce(made(fail, 'verify -DskipITs jdk=24 db=up tree=t2'), 0, null), false)
+  eq('D14 rerun: another command next, on the same tree, is no rerun', reranAtOnce(made(fail, 'test -Dtest=ShapeTest jdk=24 db=up tree=t1'), 0, null), false)
+  eq('D14 rerun: the next call after an agent launch is no rerun', reranAtOnce(made(fail, fail), 0, 1), false)
+  // the card the person reads: the view's, never a field of the ask
+  const view = (card: Json | null): World => ({ exists: () => true, json: () => ({ card }) }) as unknown as World
+  const commit = { kind: 'commit', sections: [{ id: 'rule_log', rows: [{ text: `${RED} red at the base` }, { text: `${FLAKY} flaky` }] }] }
+  eq('D13 card: the commit card of the view lists the red and the flaky test in its rows', commitCardLists(viewCard(view(commit)), [RED, FLAKY]), true)
+  eq('D13 card: names in the question text, or in a card on the ask, are not the commit card', [
+    commitCardLists(viewCard(view(null)), [RED, FLAKY]),
+    shown({ question: { question: 'Commit?' }, card: commit }).includes(RED),
+    commitCardLists({ ...commit, kind: 'approval' }, [RED, FLAKY]),
+  ], [false, false, false])
+  const later = (text: string, kind = 'commit'): Json => ({ kind, sections: [{ id: 'suite', rows: [{ text }] }] })
+  eq('D14 card: the commit card shows the late flaky test only in a row that names it and calls it flaky', [
+    commitCardFlaky(later(`${FLAKY_LATER} flaky: failed once, passed at once`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY_LATER} passed`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY} flaky`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY_LATER} flaky`, 'stop'), FLAKY_LATER),
+    commitCardFlaky(null, FLAKY_LATER),
+  ], [true, false, false, false, false])
+  fs.rmSync(dir, { recursive: true, force: true })
+  console.log(`broken --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
+  return fails === 0 ? 0 : 1
+}
+
+if (import.meta.main) {
+  if (process.argv[2] === '--check') process.exit(check())
+  console.log('usage: bun scripts/e2e/broken.ts --check')
+  process.exit(2)
+}

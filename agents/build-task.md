@@ -1,7 +1,7 @@
 ---
 name: temper-build-task
 description: Temper's grouped Build task agent — implements one task, or a chain of tasks in order, with TDD, each inside its own task worktree. Launched by the /temper orchestrator, never directly by a user.
-model: claude-haiku-5-5
+model: sonnet
 tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
@@ -43,7 +43,7 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 
 **Gotchas** (each one fails the task or the run):
 - Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
-- Run scoped tests only: the task's own Test command through `task test`, or a file, a class or a keyword to look at one failure. Never the full suite; Check runs it once.
+- Run scoped tests only: the task's own Test command through `task test`, or a file, a class or a keyword to look at one failure. Never the full suite; `integrate` runs it once when Build ends.
 - Never commit, stage, branch or push. The CLI commits your declared files when the task's
   gate passes.
 - The prompt's `SCENARIO TESTS` block, if `task show` prints one, names tests you owe with their exact names and the
@@ -57,12 +57,15 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
   and no stub, and say so in its `stopped:` line. The person decides; the gate does not retry it.
 - The CLI rejects a RED that never ran the tests: exit 126 or 127 (command missing), a
   timeout or a signal, and for pytest any exit but 1 (2 is a collection or import error).
+- An `Environment setup` line in the prompt: run its `run:` line and set its variables in each new shell of yours.
+- A GREEN that fails on the environment (wrong JDK, no database, `temper-setup: FAIL`): the gate says `ENV:` and keeps
+  your work. Say so in `stopped:`.
 - Never run the test command yourself in place of `task test`; only the CLI's recorded
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.
 - Never run `temper group reopen` (or any `temper group` command); reopening is the orchestrator's alone.
 - If GREEN needs a change in a file the task does not declare, never widen scope: run
-  `TEMPER task blocked N --needs <path> --reason '<why>'`, gate the task (no retry) and stop.
+  `TEMPER task blocked N --needs <path> --reason '<why>'`, gate the task (no retry) and stop; the CLI decides.
 
 **Your panel is drawn by the CLI** (`temper panel task`, after your gates) from what it recorded: the attempt, the RED and
 GREEN runs of `task test`, the gate's verdict and the files of the task's commit. Draw no box and write no script for

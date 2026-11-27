@@ -10,7 +10,8 @@ type Stamp = { id: string; run: string; step: number; stage: string; ts: number 
 export type Decision =
   // A gate answer: the option's label and move, and the exact calls and steps it maps to.
   // `ask`: the CLI's question it answered (a step may ask more than one: Build's groups, an accepted finding).
-  | (Stamp & { kind: 'gate'; label: string; move: string; calls: string[]; steps: string[]; reason: string; ask?: string })
+  // `questionId`, `optionId` (9.8.5): the ids of that question and option, kept for the record; nothing reads them to decide.
+  | (Stamp & { kind: 'gate'; label: string; move: string; calls: string[]; steps: string[]; reason: string; ask?: string; questionId?: string; optionId?: string })
   // Start over: the saved run state may go, until the next state init begins a new run.
   | (Stamp & { kind: 'restart'; calls: string[]; reason: string })
   // A Scope drift answer: counts for the run and the path. Allow once is used by one write.
@@ -88,7 +89,8 @@ export function parseBook(raw: unknown): Decision[] {
     const o = d as Record<string, unknown>
     if (!(typeof o.id === 'string' && typeof o.run === 'string' && typeof o.step === 'number' && typeof o.stage === 'string' && typeof o.ts === 'number')) return false
     if (typeof o.reason !== 'string') return false
-    if (o.kind === 'gate') return typeof o.label === 'string' && typeof o.move === 'string' && strings(o.calls) && strings(o.steps) && (o.ask === undefined || typeof o.ask === 'string')
+    if (o.kind === 'gate') return typeof o.label === 'string' && typeof o.move === 'string' && strings(o.calls) && strings(o.steps) && (o.ask === undefined || typeof o.ask === 'string') &&
+      (o.questionId === undefined || typeof o.questionId === 'string') && (o.optionId === undefined || typeof o.optionId === 'string')
     if (o.kind === 'restart') return strings(o.calls)
     if (o.kind === 'drift') return typeof o.path === 'string' && (o.choice === 'add' || o.choice === 'revert' || o.choice === 'allow-once')
     return false

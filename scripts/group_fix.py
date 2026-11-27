@@ -5,7 +5,10 @@
   python3 group_fix.py GROUPS.json NOW SLUG G --commit   after that agent: the CLI commits what it changed in the worktree on
                                                          the group's branch, records the commit as its own (cli_commits, so
                                                          the foreign commit check never parks on it), clears the request and
-                                                         the group's gate, so the next action checks the group again
+                                                         the group's gate, so the next action checks the group again;
+                                                         a change of the config, a hook, a sensitive path, a manifest or
+                                                         a CI file is not committed (exit 1, WP32);
+                                                         refused when no request is open (only the request spends)
 
 The fix works on the merged tree of the group (every task's work, on the group's branch), so the whole is mended once
 instead of every task running again. The agent commits nothing itself; the CLI does, and `temper group gate G` checks the
@@ -20,6 +23,57 @@ PREFIX = os.environ.get("TEMPER_PREFIX", "")
 # the CLI's own folders inside a worktree are never part of a fix
 EXCLUDE = [":(exclude,glob)**/.temper/**", ":(exclude,glob).temper/**",
            ":(exclude,glob)**/.claude/worktrees/**", ":(exclude,glob).claude/worktrees/**"]
+
+
+def byproducts(wt):
+    """WP22: what a run of the reuse store left in the worktree (coverage data, caches; never a tracked, declared, source or
+    test file, run_env.byproducts_of), as exclude paths: a check's byproduct is no part of a fix; none when unknown. A
+    folder entry stands for the untracked files in it now, less every source, test or declared file: what the fix agent
+    wrote there is part of the fix."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import run_env
+        lst = run_env.byproducts_of(wt, run_env.store_read(run_env._store(wt)), os.getcwd())
+        out = [x for x in lst if not x.endswith("/")]
+        dirs = [":(top,literal)%s" % x for x in lst if x.endswith("/")]
+        if dirs:
+            prefix, decl = run_env._git(wt, "rev-parse", "--show-prefix"), run_env.declared(os.getcwd()) | run_env.declared(wt)
+            p = subprocess.run(["git", "-C", wt, "ls-files", "-o", "--exclude-standard", "--full-name", "-z", "--"] + dirs,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
+            out += [f for f in p.stdout.decode("utf-8", "surrogateescape").split("\0")
+                    if f and not run_env._bad_byproduct(f, prefix, set(), decl)]
+        return [":(exclude,top,literal)%s" % x.rstrip("/") for x in out]
+    except Exception:
+        return []
+
+
+def refused(staged):
+    """WP32 (rule 4): why a staged path is no fix agent's to commit, as for a repair commit (repair_ops.refused_file): the
+    config, a git hook, Temper's own files, a locked acceptance test, a sensitive path, a manifest or a CI file; '' for
+    none. The group's own files are the agent's (the approved set is not asked here: the commit gate's scope row holds
+    it). The staged names are from the repository top (git diff --cached names them so), so the project's prefix below
+    the top goes first (NEW-RULES-4): refused_file compares with the config path relative to the project folder. A check
+    that cannot run refuses nothing."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import repair_ops
+        from flow_run import Run
+        r, config = Run({}), os.path.relpath(os.environ.get("TEMPER_CONFIG") or os.path.join(".claude", "temper.config"))
+        prefix = PREFIX or _show_prefix()
+        rel = [p[len(prefix):] if prefix and p.startswith(prefix) else p for p in staged]
+        return next((w for w in (repair_ops.refused_file(p, r, "", config, {os.path.normpath(p)}) for p in rel) if w), "")
+    except Exception:
+        return ""
+
+
+def _show_prefix():
+    """The project folder's path inside the repository (`git rev-parse --show-prefix` from here), '' at the top."""
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-prefix"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, cwd=os.getcwd())
+        return p.stdout.decode("utf-8", "replace").strip() if p.returncode == 0 else ""
+    except Exception:
+        return ""
 
 
 def git(wt, *args):
@@ -70,17 +124,35 @@ def main(argv):
         save(path, d)
         print("OK: group %s: one Build fix agent works on its merged tree, then the CLI commits it and checks the group again" % gid)
         return 0
+    if not isinstance(g.get("fix"), dict):   # rule 9: only the request spends group:G, so no commit comes without one
+        return fail("no fix of group %s was asked (temper group fix %s asks for one)" % (gid, gid))
     if not os.path.isdir(wt):
         return fail("group %s's worktree %s is gone" % (gid, wt))
-    rc, out = git(wt, "add", "-A", "--", ".", *EXCLUDE)
+    rc, out = git(wt, "add", "-A", "--", ".", *(EXCLUDE + byproducts(wt)))
     if rc != 0:
         return fail("git add in %s failed: %s" % (wt, out.splitlines()[-1] if out else "no output"))
+    why = refused([p for p in git(wt, "diff", "--cached", "--name-only", "--no-renames", "-z")[1].split("\0") if p])
+    if why:   # nothing is committed, the request goes, and the group's check stays failed: its question asks the person
+        git(wt, "reset", "-q")
+        g.pop("fix", None)
+        save(path, d)
+        return fail("group %s: the fix is not committed: %s, which a fix agent never changes" % (gid, why))
     # the group is checked again by the next action, as an ordinary call of the CLI: its gate goes (the count stays)
     if git(wt, "diff", "--cached", "--quiet")[0] == 0:
+        # 9.8.5 (S8): no change means the cause is not in the group's code. The same tree would fail the same way, so its
+        # check stays failed (no rerun) and the next question points at the plan or the environment.
         g.pop("fix", None)
-        g.pop("gate", None)
+        g["fix_empty"] = int(g.get("fix_empty") or 0) + 1
         save(path, d)
-        print("OK: group %s: the fix agent changed nothing; the group is checked again as it is" % gid)
+        try:   # WP23: one failure record of class command
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import failure
+            failure.record("build", "group:%s" % gid, "validate", "fix-changed-nothing",
+                           "group %s: the fix agent changed nothing, so the cause is not in the group's code" % gid,
+                           ran_by="agent", class_by="structure")
+        except Exception:
+            pass
+        print("OK: group %s: the fix agent changed nothing, so the cause is not in the group's code; its check stays failed" % gid)
         return 0
     rc, out = git(wt, *id_args(), "commit", "-q", "-m", "fix(%s): %s group check" % (slug or "run", gid))
     if rc != 0:

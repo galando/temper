@@ -1,0 +1,232 @@
+# Case file 88 (review 8): migration and surface. A user of 9.8.4 (7c7a1c1) after the upgrade, a project that ran the
+# base (10e965a), the one time config question and the one time notice. Each check here fails on the code under review
+# and names the rule or the row of docs/plans/one-go/done.md it holds. Sourced by test-temper.sh; its helpers (nx, _ev,
+# gpass) are used here. The runs and configs of an older Temper come from scripts/selftest/saved-old.json, as case file
+# 46 reads them. A call that may fail stays inside $( ... ) or ends in || true, so the file always runs to its end.
+
+# --- the helpers of this file ---
+SAVED88="$TESTS_DIR/saved-old.json"
+_clean88() { # an empty work folder (a worktree of an earlier check is forgotten by git with it)
+  cd "$WORKDIR" || exit 1
+  find "$WORKDIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+  cd "$WORKDIR" || exit 1
+}
+_git88() { git init -q . 2>/dev/null; git checkout -q -B master 2>/dev/null; git config user.email t@example.com; git config user.name T; }
+_tpl88() { # _tpl88 <commit>: the config template that Temper shipped
+  python3 -I - "$SAVED88" "$1" <<'PY'
+import json, sys
+sys.stdout.write(json.load(open(sys.argv[1]))[sys.argv[2]]["template"])
+PY
+}
+_restore88() { # _restore88 <commit> <state>: the project as that Temper left it at that state (as _restore46 of case 46)
+  _clean88; _git88
+  printf 'x\n' > README.md; git add README.md; git commit -q -m init
+  local b
+  b="$(python3 -I - "$SAVED88" "$1" "$2" "$WORKDIR" "$REPO_ROOT" "$(git rev-parse HEAD)" <<'PY'
+import json, os, sys
+saved, commit, state, work, plugin, head = sys.argv[1:7]
+d = json.load(open(saved))[commit]["states"][state]
+for rel, text in d["files"].items():
+    p = os.path.join(work, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(text.replace("@PROJECT@", work).replace("@PLUGIN@", plugin).replace("@HEAD@", head))
+print(d.get("branch") or "master")
+PY
+)"
+  git checkout -q -B "${b:-master}" 2>/dev/null
+}
+_row88() { # _row88 <gate> <row name>: the pass of that row of the gate's last verdict in gates.json, or none
+  python3 -I - "$1" "$2" <<'PY'
+import json, sys
+try:
+    g = json.load(open(".temper/gates.json")).get(sys.argv[1]) or {}
+except (OSError, ValueError):
+    g = {}
+print(next((str(r.get("pass")) for r in g.get("requirements") or [] if r.get("name") == sys.argv[2]), "none"))
+PY
+}
+
+# --- review 8, rule 2: a run approved by 9.8.4 or by the base and taken up after the upgrade still binds its plan ---
+# The saved state holds plan_hash (9.8.4 records it at the plan gate), so the CLI knows the plan the person approved.
+# After the upgrade the plan's gate commands are changed (Integration and Validate become `true`): the row "intent
+# unchanged since the approval" of the commit gate must fail, naming tasks.md. It passes with "no digest was recorded at
+# the approval (a run saved before 9.8.5)", because scripts/approval.py binding_row returns before it compares plan_hash.
+_r2_88=""
+for _c in 7c7a1c1 10e965a; do
+  _restore88 "$_c" review-finding
+  "$TEMPER" next --json >/dev/null 2>&1 || true   # the run is taken up by 9.8.5 (migrate_legacy stamps it)
+  sed -i 's/^\*\*Integration:\*\* `npm test`/**Integration:** `true`/; s/^\*\*Validate:\*\* `npm test`/**Validate:** `true`/' \
+    .temper/specs/pw/tasks.md
+  "$TEMPER" gate commit >/dev/null 2>&1 || true
+  _r2_88+="${_r2_88:+|}$([[ $_c == 7c7a1c1 ]] && echo 9.8.4 || echo base)=$(_row88 commit "intent unchanged since the approval")"
+done
+assert_eq "review 8: a plan approved by 9.8.4 or by the base whose gate commands change after the upgrade fails the row intent unchanged since the approval" \
+  "9.8.4=False|base=False" "$_r2_88"
+# The lane's checks beside the finding (WP32): a run of those versions binds its intent as found when 9.8.5 takes it
+# up, so a criterion changed after the upgrade fails the row too; and a run whose plan holds what 9.8.5 binds besides
+# (the text a manual Test asks the person to confirm) still goes on unchanged (row D60), its plan_hash moved.
+_i88=""
+for _c in 7c7a1c1 10e965a; do
+  _restore88 "$_c" review-finding
+  "$TEMPER" next --json >/dev/null 2>&1 || true
+  "$TEMPER" gate commit >/dev/null 2>&1 || true
+  _i88+="${_i88:+|}$([[ $_c == 7c7a1c1 ]] && echo 9.8.4 || echo base)=$(_row88 commit "intent unchanged since the approval")"
+  printf '\n- [ ] AC-09 [required]: a criterion added after the upgrade\n' >> .temper/specs/pw/intent.md
+  "$TEMPER" gate commit >/dev/null 2>&1 || true
+  _i88+=",$(_row88 commit "intent unchanged since the approval")"
+done
+assert_eq "review 8, lane: a run of 9.8.4 or of the base taken up as it was passes the row, and a criterion added after the upgrade fails it" \
+  "9.8.4=True,False|base=True,False" "$_i88"
+_restore88 7c7a1c1 review-finding
+python3 - "$REPO_ROOT/scripts" <<'PY'
+import json, re, sys
+sys.path.insert(0, sys.argv[1])
+import approval, tasks_md
+p = ".temper/specs/pw/tasks.md"
+t = open(p).read()
+t = re.sub(r"(?m)^\*\*Test:\*\* .*$", "**Test:** manual — the reset mail arrives", t, count=1)
+open(p, "w").write(t)
+st = json.load(open(".temper/build-state.json"))
+st["plan_hash"] = approval.plan_digest(tasks_md.parse(p), legacy=True)   # the digest 9.8.4 recorded for this plan
+json.dump(st, open(".temper/build-state.json", "w"), indent=2)
+PY
+"$TEMPER" next --json >/dev/null 2>&1 || true
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_m88="$(_row88 commit "intent unchanged since the approval")"
+sed -i 's/the reset mail arrives/nothing at all/' .temper/specs/pw/tasks.md
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+assert_eq "review 8, lane: a saved run of 9.8.4 with a manual Test goes on after the upgrade, and its confirm text is bound" \
+  "True|False" "$_m88|$(_row88 commit "intent unchanged since the approval")"
+
+# --- review 8, D102: the one time notice is for a project that ran 9.8.4 or the base, never for one that only ran 9.8.5 ---
+# A project set up by 9.8.5 (temper init wrote the mark) commits a run's spec folder, as the run's own commit does. A
+# second worktree of it (claude --worktree, the way Getting Started says to start other work), or a fresh clone, has the
+# committed .temper/specs but not the ignored mark, so its first next says "Temper 9.8.5 asks twice" to a project that
+# never ran an earlier Temper.
+_clean88; mkdir -p p; cd p || exit 1; _git88
+printf 'x\n' > README.md; git add README.md; git commit -q -m init
+"$TEMPER" config init >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
+mkdir -p .temper/specs/done1; printf '# Intent: a finished run\n' > .temper/specs/done1/intent.md
+git add -A; git commit -q -m 'docs(done1): record the run' 2>/dev/null
+_d102_88="first=$(_ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)")"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_d102_88+="|worktree=$(_ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)")"
+cd "$WORKDIR" || exit 1
+assert_eq "review 8: a worktree of a project that only ran 9.8.5 is never told Temper 9.8.5 asks twice" \
+  "first=quiet|worktree=quiet" "$_d102_88"
+# NEW-FLOW-2 (a): the same project as Temper itself leaves it: the config is not committed (the run's commit names no
+# file under .claude/), so a new worktree has the spec folders and no config. The mark of the clone (in the folder
+# `git rev-parse --git-common-dir` names) says that this project was set up by 9.8.5.
+_told88() { _ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)"; }
+_clean88; mkdir -p p; cd p || exit 1; _git88
+printf 'x\n' > README.md; git add README.md; git commit -q -m init
+"$TEMPER" config init >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
+mkdir -p .temper/specs/done1; printf '# Intent: a finished run\n' > .temper/specs/done1/intent.md
+git add .temper/specs; git commit -q -m 'docs(done1): record the run' 2>/dev/null
+_nf2a88="config=$(git ls-files .claude | grep -c . | tr -d ' ')|first=$(_told88)"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_nf2a88+="|worktree=$(_told88)"
+cd "$WORKDIR" || exit 1
+assert_eq "NEW-FLOW-2: a worktree of a project that only ran 9.8.5 and never committed its config is never told" \
+  "config=0|first=quiet|worktree=quiet" "$_nf2a88"
+# NEW-FLOW-2 (c): a project of 9.8.4 whose config holds nothing to tidy is told once, not once in every new worktree
+_clean88; mkdir -p p; cd p || exit 1; _git88; mkdir -p .claude .temper/specs/old1
+printf '# our config\nreview:\n  block-on: [critical, high]\n' > .claude/temper.config
+printf '# Intent: an old run\n' > .temper/specs/old1/intent.md
+git add -A; git commit -q -m init 2>/dev/null
+_nf2c88="first=$(_told88)|again=$(_told88)"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_nf2c88+="|worktree=$(_told88)"
+cd "$WORKDIR" || exit 1
+assert_eq "NEW-FLOW-2: a project that ran 9.8.4 is told once, and a new worktree of that clone is not told again" \
+  "first=told|again=quiet|worktree=quiet" "$_nf2c88"
+
+# --- review 8, D62: the one time config question is never asked again ---
+# The person answers Remove them (the recommended answer) on the template of 9.8.4. Later they set a coverage floor of
+# 80 on purpose, a value the old template happened to ship: the next run asks config.tidy again and recommends removing
+# their own line. Remove them writes no mark (only Keep my file writes upgrade.asked), so the question comes back.
+_clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+_d62_88="first=$(nx "(d.get('ask') or {}).get('id')")"
+"$TEMPER" config tidy --apply >/dev/null 2>&1 || true
+"$TEMPER" state clear >/dev/null 2>&1 || true
+printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+"$TEMPER" state init pw2 --feature 'Export totals' >/dev/null 2>&1
+_d62_88+="|later=$(nx "(d.get('ask') or {}).get('id')")"
+assert_eq "review 8: after Remove them the one time question config.tidy is never asked again, also when the person later sets a value an old template shipped" \
+  "first=config.tidy|later=None" "$_d62_88"
+# NEW-FLOW-2 (b): the answer is on record in the clone, not only in the file's first line: a line the person writes
+# above the header, or the header taken out, does not bring the question back; nor does Keep my file with its
+# upgrade block taken out again.
+_after88() { # _after88 <answer of config.tidy> <sed script on the config>: the question of a later run, after that edit
+  _clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+  printf 'x\n' > README.md; git add -A; git commit -q -m init
+  "$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+  "$TEMPER" config tidy "$1" >/dev/null 2>&1 || true
+  "$TEMPER" state clear >/dev/null 2>&1 || true
+  sed -i "$2" .claude/temper.config
+  printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+  "$TEMPER" state init pw2 --feature 'Export totals' >/dev/null 2>&1
+  nx "(d.get('ask') or {}).get('id')"
+}
+assert_eq "NEW-FLOW-2: after an answer to config.tidy an edit of the config's first line or of its upgrade block does not bring the question back" \
+  "above=None|header out=None|keep, block out=None" \
+  "above=$(_after88 --apply '1i # our team config')|header out=$(_after88 --apply 1d)|keep, block out=$(_after88 --keep '/^upgrade:/,$d')"
+# The lane's check beside the finding (WP32): a new project, whose config config init wrote, sets the same value on
+# purpose; it never ran an older Temper, so it is never asked the upgrade question.
+_clean88; _git88; "$TEMPER" config init >/dev/null 2>&1
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1
+printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+"$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+assert_eq "review 8, lane: a new project whose config config init wrote is never asked config.tidy, also with a value an old template shipped" \
+  "None" "$(nx "(d.get('ask') or {}).get('id')")"
+
+# --- review 8, D62: the copy Remove them keeps is Temper's own file, not a change outside the plan ---
+# Remove them writes .claude/temper.config.before-9.8.5. scripts/blast_filter.py counts it as a project file, so the
+# commit gate's blast radius row fails "changed outside declared files: .claude/temper.config.before-9.8.5" in the first
+# run after the upgrade, and in every later run while the copy is there: a commit question the run never needed.
+_clean88; _git88; mkdir -p .claude src; _tpl88 7c7a1c1 > .claude/temper.config; printf 'echo a\n' > src/a.sh
+git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+"$TEMPER" config tidy --apply >/dev/null 2>&1 || true
+mkdir -p .temper/specs/pw
+cat > .temper/specs/pw/tasks.md <<'EOF'
+# Tasks: Password reset by email
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The one group.
+
+### Task 1: change a
+**File:** `src/a.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- a changes
+- [x] done
+EOF
+printf 'echo b\n' > src/a.sh
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+assert_eq "review 8: the copy the one time question keeps is no change outside the plan: the blast radius row of the commit gate passes" \
+  "copy=yes|blast radius=True" "copy=$([[ -f .claude/temper.config.before-9.8.5 ]] && echo yes || echo no)|blast radius=$(_row88 commit "blast radius")"
+
+# --- review 8, Getting Started word for word: "Save for later. Every question offers it" ---
+# The first question a user of 9.8.4 meets after the upgrade, config.tidy, offers only tidy-config and keep-config.
+# WP32 (lane advfix1): the reviewer's check asked for a save option on config.tidy; the fix is the page, since the
+# question keeps its two answers (no option is added to a question, and the option caps hold). So the check holds the
+# page to the question: it no longer says every question offers Save for later, and it names config.tidy as one that
+# does not, while config.tidy still offers no save.
+_clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+_gs88="$REPO_ROOT/docs/getting-started.md"
+assert_eq "review 8: Getting Started says config.tidy offers no Save for later, as the question offers none, and claims it of no question it lacks" \
+  "config.tidy|save=no|every=0|named=1" \
+  "$(nx "(d.get('ask') or {}).get('id')")|save=$(nx "'yes' if any(o.get('id') == 'save' for o in (d.get('ask') or {}).get('options') or []) else 'no'")|every=$(grep -c 'Every question offers it' "$_gs88")|named=$(tr '\n' ' ' < "$_gs88" | grep -o 'The one time config question after the upgrade does not' | grep -c .)"

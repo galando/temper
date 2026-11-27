@@ -1,15 +1,15 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "11|1|1" \
+assert_eq "model --all prints a line for each of the 14 agents of the table, task= and task-escalation= among them" "14|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
-assert_eq "model task defaults to claude-haiku-5-5" "claude-haiku-5-5" "$("$TEMPER" model task)"
+assert_eq "model task defaults to sonnet, the table's value" "sonnet" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
-assert_eq "grouped on: model --all appends task= and task-escalation=" "11|task=claude-haiku-5-5|task-escalation=sonnet" \
+assert_eq "grouped on: model --all appends task= and task-escalation=" "14|task=sonnet|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
 setup
 printf 'build:\n  mode: grouped\n  grouped:\n    task-model: haiku\n    escalation-model: opus\n' >> .claude/temper.config
@@ -38,13 +38,16 @@ assert_eq "stale lock: the write succeeds without a warning" "0|0" "$rc|$(printf
 assert_eq "stale lock: the row is recorded and the lock is gone" "1|no" \
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -e .temper/.lock ]] && echo yes || echo no)"
 
-# a fresh lock held by someone else: fail open after the wait, warn, never release it
+# a fresh lock held by someone else: after the wait the write fails and writes nothing (9.8.5, Q9: never write without the
+# lock; it wrote past it with a WARN before), and the foreign lock is never released
 setup
 mkdir -p .temper/evidence .temper/.lock
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "while locked" 2>&1)"; rc=$?
-assert_eq "held lock: writes anyway with a WARN after the wait" "0|1" "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-assert_eq "held lock: the row is recorded and the foreign lock is left alone" "1|yes" \
-  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "while locked" 2>&1)"; rc=$?
+assert_eq "held lock: the write fails after the wait, saying nothing was written" "75|1" "$rc|$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+assert_eq "held lock: no row is recorded and the foreign lock is left alone" "0|yes" \
+  "$(python3 -c "import json
+try: print(len(json.load(open('.temper/evidence/build.json'))))
+except OSError: print(0)")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 
 # R8: the lock wait is bounded by the wall clock, so TEMPER_LOCK_WAIT_S is honoured
 setup
@@ -68,6 +71,7 @@ rm -f .temper/.lock
 # are rejected; A group larger than max-blast-radius is rejected at plan time [AC-02, AC-03, AC-05, AC-11]
 gp_base() { # write the valid two-group fixture to the demo spec's tasks.md (a plan not built yet, so no groups.json)
   rm -f .temper/groups.json
+  "$TEMPER" state set complexity medium >/dev/null 2>&1   # two groups are above the simple tier, so a valid fixture records one (R5-3)
   cat > .temper/specs/demo/tasks.md <<'GP'
 # Tasks: demo
 
@@ -257,7 +261,7 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
 assert_eq "schedule: a ready line carries task, group, the task's own worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1, "manual": false}' \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "sonnet", "agent_model": "sonnet", "attempt": 1, "manual": false}' \
   "$("$TEMPER" schedule | head -1)"
 
 # agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)
@@ -307,9 +311,11 @@ assert_eq "schedule: the waiting line is absent while tasks are ready" "0" "$("$
 sg_state '{}' '"G1":{"status":"parked","worktree":".claude/worktrees/temper-demo-G1"},"G2":{"status":"parked","worktree":".claude/worktrees/temper-demo-G2"}'
 assert_eq "schedule: with every group parked the last line lists them" "1" "$(sg_last | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('parked')==['G1','G2'] and d.get('done') is False else 0)")"
 
-# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model
-sg_setup; sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
-assert_eq "schedule: attempt 2 is offered on the task model" "claude-haiku-5-5|2" \
+# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model. The task
+# model is set apart from the escalation model (models.task: haiku, the key of row D28), since both are sonnet by default
+sg_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config
+sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
+assert_eq "schedule: attempt 2 is offered on the task model" "haiku|2" \
   "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
 sg_state '{"1":{"group":"G1","status":"failed","attempt":2,"attempts":[{"n":1,"outcome":"FAIL"},{"n":2,"outcome":"FAIL"}]}}'
 assert_eq "schedule: attempt 3 is offered on the escalation model" "sonnet|3" \
@@ -437,7 +443,7 @@ git checkout -q feature/demo
 mkdir -p .claude/worktrees/temper-demo-G1; echo squatter > .claude/worktrees/temper-demo-G1/x
 assert_exit "group start: a folder at the worktree path that is not this worktree exits 3" 3 "$TEMPER" group start G1
 assert_eq "group start: the squatting folder is left alone" "squatter" "$(cat .claude/worktrees/temper-demo-G1/x)"
-sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; git checkout -q -B main
+sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; _base_known; git checkout -q -B main
 assert_exit "group start: the main branch is refused (exit 3)" 3 "$TEMPER" group start G1
 assert_eq "group start: the refused main run made no worktree" "no" "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)"
 setup
@@ -703,9 +709,9 @@ st_attempt() { # st_attempt <model> <ms>: start Task 1, write a declared file an
   st_edit src/a.sh; st_edit stray.txt
   "$TEMPER" task gate 1 --model "$1" --ms "$2" 2>&1
 }
-st_setup
+st_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config   # the task model apart from the escalation model
 out="$(st_attempt claude-haiku-5-5 41000)"; rc=$?
-assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
+assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on haiku" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
   "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" || -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
@@ -789,7 +795,8 @@ print(v)" "$1" "$2"
 }
 gg_ready_g1() { "$TEMPER" schedule | python3 -c "
 import json,sys
-print(','.join('%d@%d' % (r['task'], r['attempt']) for r in (json.loads(l) for l in sys.stdin if l.startswith('{')) if r.get('group')=='G1'))"; }
+print(','.join('%d@%d' % (r['task'], r['attempt']) for r in (json.loads(l) for l in sys.stdin if l.startswith('{')) if r.get('group')=='G1'))"
+}
 
 # PASS path
 gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
@@ -817,7 +824,8 @@ assert_eq "group gate: Validate exit 1 -> FAIL naming the exit (exit 1)" "1|1" "
 assert_eq "group gate: a failing Validate leaves the group running with a FAIL verdict" "running|FAIL" "$(gg_g G1 status)|$(gg_g G1 gate.verdict)"
 assert_eq "group gate: the failing run is recorded as a row" "1" \
   "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/evidence/build.json')) if x.get('group')=='G1' and not x.get('task') and x.get('exit_code')==1]))")"
-out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+# WP22: the same Validate on the same tree returns the kept failure; the person's Run it anyway (--fresh) runs it again
+out="$("$TEMPER" group gate G1 --fresh 2>&1)"; rc=$?
 assert_eq "group gate: a later run with Validate green flips the verdict to PASS" "0|PASS" "$rc|$(gg_g G1 gate.verdict)"
 assert_exit "group gate: an unknown group exits 1" 1 "$TEMPER" group gate G9
 assert_exit "group gate: a malformed group id exits 1" 1 "$TEMPER" group gate foo
@@ -895,7 +903,8 @@ import json,sys
 v=json.load(open('.temper/groups.json')).get('integration') or {}
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(v if not isinstance(v,list) else ','.join(v))" "$1"; }
+print(v if not isinstance(v,list) else ','.join(v))" "$1"
+}
 gi_gate_row() { "$TEMPER" gate build 2>&1 | grep -c "integration"; }
 
 gi_all; BASE="$(git rev-parse HEAD)"
@@ -932,7 +941,7 @@ out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"; rc=$?
 assert_eq "integrate: a failing suite -> exit 1 naming the exit" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*exit 1')"
 assert_eq "integrate: verdict FAIL is stored and the group branches are kept" "FAIL|2" "$(gi_int verdict)|$(git branch --list 'temper/demo/*' | wc -l | tr -d ' ')"
 assert_eq "integrate: gate build is FAIL on the integration row" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL')"
-assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
+assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate --fresh >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
 
 # live run 11: a passing Validate or suite prints only its last 12 lines into the main conversation; a failing one all
 gi_setup
@@ -942,13 +951,13 @@ gi_pass 1 G1 src/a.sh 'a_main() { :; }'; gi_pass 2 G1 src/b.sh 'b_main() { :; }'
 nums() { printf '%s\n' "$1" | grep -x '[0-9][0-9]*' | sed -n '1p;$p' | paste -sd'-' -; printf '%s\n' "$1" | grep -cx '[0-9][0-9]*'; }
 out="$(GV_EXIT=1 "$TEMPER" group gate G1 2>&1)"
 assert_eq "group gate: a failing Validate prints all of its output" "1-40|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
-out="$("$TEMPER" group gate G1 2>&1)"
+out="$("$TEMPER" group gate G1 --fresh 2>&1)"   # WP22: run again after the kept failure, by the person's --fresh
 assert_eq "group gate: a passing Validate prints its last 12 lines and says how many it left out" "29-40|12|1|1" \
   "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -cx '\[the first 28 lines of the passing output are not shown\]')|$(printf '%s\n' "$out" | grep -c '^PASS: group G1')"
 "$TEMPER" group gate G2 >/dev/null 2>&1
 out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"
 assert_eq "integrate: a failing suite prints all of its output" "101-140|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
-out="$("$TEMPER" integrate 2>&1)"
+out="$("$TEMPER" integrate --fresh 2>&1)"   # WP22: as above
 assert_eq "integrate: a passing suite prints its last 12 lines, and its row keeps the output" "129-140|12|1|1" \
   "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c '^PASS: integrated')|$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/build.json')) if x.get('phase')=='integration'][-1]; print(int(r['output'].startswith('101')))")"
 unset -f nums
@@ -990,7 +999,7 @@ assert_exit "integrate: a branch that is not the run's feature branch exits 1" 1
 gi_all; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json; HEAD0="$(git rev-parse HEAD)"
 assert_exit "integrate: the CLI merge checks the upstream gates first (ADR 0009, exit 3)" 3 "$TEMPER" integrate
 assert_eq "integrate: the refused run merged nothing" "$HEAD0" "$(git rev-parse HEAD)"
-gi_all; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+gi_all; _ran_unattended
 assert_exit "integrate: autonomy lets the local integration merge run (design resolution 1a)" 0 "$TEMPER" integrate
 setup; rm -f .temper/specs/demo/tasks.md .temper/groups.json
 assert_exit "integrate: a run without tasks.md exits 1" 1 "$TEMPER" integrate
@@ -1002,7 +1011,7 @@ gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four 
   gp_setup
   [[ "$1" != "fix" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
-  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  _ran_unattended   # WP11: the state a run the person started at the approval leaves
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
   # base with the same content and stop counting as changes. Clear them first so every call starts from
   # the same tree.
@@ -1035,7 +1044,8 @@ import json,sys
 v=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"
+}
 gg_setup
 # Task 1 fails twice (haiku, haiku) then passes on the escalation model; Task 2 passes at once
 for a in 1 2; do
@@ -1068,7 +1078,9 @@ PY
 "$TEMPER" evidence add --stage review --claim "null deref in a.sh" --severity high >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim "style nit" --severity low >/dev/null 2>&1
 assert_eq "group report: open review findings are counted from the review ledger" "2" "$(gr_json review_findings_open)"
-"$TEMPER" evidence resolve --stage review --id 2 --fixed-by "abc" >/dev/null 2>&1
+# 9.8.5 (WP18): resolve takes only a commit the CLI recorded after the reviewed HEAD: the snapshot, then such a commit
+python3 -c "import json,subprocess; p='.temper/build-state.json'; d=json.load(open(p)); d['review_snapshot']={'head': subprocess.check_output(['git','rev-parse','HEAD']).decode().strip(), 'files': {}}; json.dump(d, open(p,'w'), indent=2)"
+"$TEMPER" evidence resolve --stage review --id 2 --fixed-by "$(cli_commit)" >/dev/null 2>&1
 assert_eq "group report: a resolved finding is no longer open" "1" "$(gr_json review_findings_open)"
 out="$("$TEMPER" group report 2>&1)"; rc=$?
 assert_eq "group report: the text form prints exit 0 and the headline numbers, and no token count" "0|1|1|0" \
@@ -1081,7 +1093,7 @@ assert_eq "group report: a parked group is listed" '["G1"]' "$(gr_json parked)"
 gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1
 "$TEMPER" gate plan >/dev/null 2>&1
 "$TEMPER" state archive >/dev/null 2>&1
-assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|claude-haiku-5-5|sonnet|2" \
+assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|sonnet|sonnet|2" \
   "$(python3 -c "
 import json
 g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
@@ -1106,7 +1118,8 @@ import json,sys
 v=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"
+}
 setup
 assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --ms 4000
 "$TEMPER" usage add --stage build --model claude-haiku-5-5 --ms 2000 --task 4 >/dev/null 2>&1
@@ -1168,9 +1181,9 @@ TB_MAX="$(grep -m1 '^TASK_BRIEF_MAX_BYTES=' "$TEMPER" | sed 's/^[^=]*=//' | tr -
 assert_eq "task brief: agents/build-task.md exists" "1" "$([[ -f "$TB" ]] && echo 1 || echo 0)"
 assert_eq "task brief: within TASK_BRIEF_MAX_BYTES (read from the script)" "1" \
   "$([[ -f "$TB" && -n "$TB_MAX" && "$(wc -c < "$TB" | tr -d ' ')" -le "$TB_MAX" ]] && echo 1 || echo 0)"
-assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-haiku-5-5" \
+assert_eq "task brief: frontmatter name and model" "temper-build-task|sonnet" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^name:/{sub(/^name:[[:space:]]*/,""); a=$0} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); b=$0} END{print a "|" b}' "$TB" 2>/dev/null)"
-assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
+assert_eq "model task defaults to the table's sonnet, the model line of the brief" "sonnet" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
 assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
@@ -1178,7 +1191,7 @@ assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plug
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "11" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 14 lines with the task brief present" "14" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---
@@ -1195,28 +1208,31 @@ assert_eq "plan brief: one step points at the grouped format, and none at a buil
   "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '2048' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "config default: commented build block names every grouped key" "4" \
-  "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template keeps 10 live lines, and every grouped key has its default in the table of the CLI: docs/commands.md
+# holds that table (temper config show --markdown) and names the two old model keys among what became of an old key
+assert_eq "config default: the key table of docs/commands.md names every grouped key" "5" \
+  "$(for k in 'build.grouped.max-parallel' 'build.grouped.max-groups' 'build.grouped.keep-days' 'build.grouped.task-model' 'build.grouped.escalation-model'; do grep -qF -- "\`$k" "$REPO_ROOT/docs/commands.md" && echo x; done | wc -l | tr -d ' ')"
 setup
 
 # --- the orchestrator is a loop over temper next (ADR 0013); grouped Build's loop is the CLI's ---
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
-# /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
-assert_eq "orchestrator: the loop runs temper go (9.8.0), and /temper:build is a door into it" "1|1" \
-  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
+# WP28: no door into the orchestrator is left: /temper:temper takes up the active run, and no page enters at a stage.
+assert_eq "orchestrator: the loop runs temper go (9.8.0), and no door into it is left (WP28)" "1|1" \
+  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$([[ ! -e "$REPO_ROOT/commands/build.md" ]] && ! grep -qF 'Entering at a stage' "$OT" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its time filled in, and no agent id or token count" "yes|0|0" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{ms}` (how long the agent ran, in milliseconds) comes from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")|$(grep -ciE 'subagent_tokens|token_count' "$OT")"
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -cF 'run its `after` calls: `{ms}` (how long the agent ran, in milliseconds) comes from the Agent result' >/dev/null && echo yes || echo no)|$(grep -c '{agent}' "$OT")|$(grep -ciE 'subagent_tokens|token_count' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
   "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
   "$(for k in 'final feature commit' 'never pushes' 'answered Continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template holds only the person's choices; the invariant is stated in the grouped Build guide
 assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
-  "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
+  "$(grep -qiF 'final feature commit' "$REPO_ROOT/docs/grouped-build.md" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: the task gate verdict and its restore path [H1, H2, H5, M2] ---
@@ -1257,7 +1273,8 @@ case_hook() { # case_hook <shell line>: a native pre-commit hook that runs the l
   printf '#!/bin/sh\n%s\nexit 0\n' "$1" > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
   git config core.hooksPath "$hd"
 }
-h5_hook() { case_hook 'mkdir -p .temper && echo "{}" > .temper/gates.json'; }   # writes run state in the commit's own top folder, as the real hook does
+# h5_hook writes run state in the commit's own top folder, as the real hook does
+h5_hook() { case_hook 'mkdir -p .temper && echo "{}" > .temper/gates.json'; }
 st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'; h5_hook
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
@@ -1324,7 +1341,8 @@ assert_eq "H4: the autonomy commit gate compares exact paths too" "1" "$(gc_row 
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: locking, atomic run-file writes and recorded shas [M1, L1, L2, L3, A1] ---
-slow_hook() { case_hook "sleep $1"; }   # sleeps $1 seconds, so a commit is observably in flight
+# slow_hook sleeps $1 seconds, so a commit is observably in flight
+slow_hook() { case_hook "sleep $1"; }
 lock_owner() { cat .temper/.lock/owner 2>/dev/null || echo none; }
 
 # A1: a commit the task agent makes itself, with the CLI's subject format, is still not the CLI's
@@ -1388,18 +1406,18 @@ assert_eq "L1: 16 writers racing a stale lock land 16 rows and release the lock"
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))" 2>/dev/null || echo invalid)|$([[ -e .temper/.lock ]] && echo yes || echo no)"
 
 # L2: evidence resolve/accept and the gate verdict write under the lock, atomically
-setup; mkdir -p .temper/evidence
+review_repo l2; mkdir -p .temper/evidence; L2FIX="$(cli_commit)"   # one commit of the CLI that every resolve may name
 for i in 1 2 3 4 5 6 7 8; do "$TEMPER" evidence add --stage review --claim "finding $i" --severity high >/dev/null 2>&1; done
 mkdir .temper/.lock
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc 2>&1)"
-assert_eq "L2: evidence resolve waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
-assert_eq "L2: evidence accept waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" gate review 2>&1)"
-assert_eq "L2: the gate verdict write waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$L2FIX" 2>&1)"
+assert_eq "L2: evidence resolve waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
+assert_eq "L2: evidence accept waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" gate review 2>&1)"
+assert_eq "L2: the gate verdict write waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
 rmdir .temper/.lock
 L2_LOCK_BEFORE="$([[ -e .temper/.lock ]] && echo held || echo free)"
-for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" > ".temper/l2.$i.out" 2>&1 & done
+for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "$L2FIX" > ".temper/l2.$i.out" 2>&1 & done
 wait
 l2_n="$(python3 -c "import json; print(len([e for e in json.load(open('.temper/evidence/review.json')) if e.get('resolved') and e['claim'] != 'finding 1']))")"
 # a miss prints what each writer said and whether the lock was free before they started (an intermittent loss is read, not guessed)
@@ -1409,6 +1427,7 @@ assert_eq "L2: six parallel resolves lose none" "6" "$l2_n"
 l2_left="$([[ -e .temper/.lock ]] && echo yes || echo no)"
 [[ "$l2_left" == "no" ]] || l2_left="yes (owner: $(cat .temper/.lock/owner 2>/dev/null || echo none); $(ls -la .temper/.lock 2>&1 | tr '\n' ' ' | cut -c1-300))"
 assert_eq "L2: the lock is released and no temp file is left" "no|0" "$l2_left|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
+cd "$WORKDIR"; rm -rf "$WORKDIR/l2"
 
 # L3: the ready check and the start write share one lock, so a start never overwrites a state that changed
 # while it waited for the lock (here: another process finished Task 2 in the meantime)
@@ -1568,7 +1587,7 @@ out="$("$TEMPER" task gate 2 --model m 2>&1)"; rc=$?
 assert_eq "F4: a sibling edit of the reopened src/a.sh FAILs as undeclared" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"
 
 # F5: no test seam in production code
-assert_eq "F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam" "0" "$(cat "$TEMPER" "$REPO_ROOT/scripts/task_ops.py" | grep -c TEMPER_LOCK_TEST_HOOK)"
+assert_eq "F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam" "0" "$({ _cli_text; cat "$REPO_ROOT/scripts/task_ops.py"; } | grep -c TEMPER_LOCK_TEST_HOOK)"
 # F6: a stale lock broken by parallel waiters leaves no aside folder, one holder at a time, and every row lands
 setup
 mkdir -p .temper/evidence .temper/.lock

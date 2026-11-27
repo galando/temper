@@ -16,7 +16,11 @@
 // folder is a scratch copy. The run writes, under the out folder:
 //   transcript.jsonl   every SDK message
 //   person.jsonl       every question and the answer given
-//   run.json           arm, task, rep, model, cost, time, turns, how it ended
+//   run.json           arm, task, rep, model, cost, time, turns, how it ended, and which code ran (the plugin's
+//                      version and commit, the Claude Code version, the mod on or off)
+//   records/           amendments.json and review.json: every entry of the run's amendments record and of its Review
+//                      ledger the harness saw while the run went on (`temper state clear` deletes both files when a run
+//                      ends), each once, in the order first seen; bench/scorecard.py reads them (WP32)
 //   work/              the repository as the arm left it (grade.py reads it)
 // The out folder defaults to $TEMPER_BENCH_RESULTS/<task>__<arm>__<rep>, else ~/temper-bench-results/...
 // It is never part of CI: it costs real model calls. Requires `npm install` in bench once.
@@ -72,19 +76,82 @@ function seed(taskDir, work) {
   return sh("git", ["rev-parse", "HEAD"], work).trim();
 }
 
+// WP32: the records of the plan's quality the scorecard reads. The CLI deletes .temper/evidence at the end of a run, and an
+// approval moves the amendments record to .temper/archive, so the harness keeps each entry it sees in <out>/records.
+const KEEP = {
+  "amendments.json": (r) => [r.n, r.ts, r.kind, r.what],
+  "review.json": (r) => [r.ts, r.claim, r.severity, r.cmd, r.phase],
+};
+function keepRecords(work, out, kept) {
+  for (const [name, keyOf] of Object.entries(KEEP)) {
+    const files = [path.join(work, ".temper", "evidence", name)];
+    const arch = path.join(work, ".temper", "archive");
+    if (name === "amendments.json" && fs.existsSync(arch)) {
+      for (const f of fs.readdirSync(arch).sort()) if (/^amendments-.*\.json$/.test(f)) files.push(path.join(arch, f));
+    }
+    const k = (kept[name] ??= { keys: new Set(), rows: [], found: false, changed: false });
+    for (const f of files) {
+      let rows;
+      try {
+        rows = JSON.parse(fs.readFileSync(f, "utf8"));
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(rows)) continue;
+      if (!k.found) k.changed = true;
+      k.found = true;
+      for (const r of rows) {
+        const key = JSON.stringify(keyOf(r ?? {}));
+        if (r && typeof r === "object" && !k.keys.has(key)) {
+          k.keys.add(key);
+          k.rows.push(r);
+          k.changed = true;
+        }
+      }
+    }
+    if (k.changed) {
+      fs.mkdirSync(path.join(out, "records"), { recursive: true });
+      fs.writeFileSync(path.join(out, "records", name), JSON.stringify(k.rows, null, 1) + "\n");
+      k.changed = false;
+    }
+  }
+}
+
 // The moves of the options Temper's CLI offers right now (label -> move), so person.mjs answers a gate
-// by what it does. Empty outside a Temper run.
+// by what it does, and the id of each question by its text (9.8.5: the scorecard groups dialogs by question id and
+// counts the steps back to Plan by move and by the stage the option's `state loop` call goes back to). Empty outside a
+// Temper run.
 function temperMoves(work) {
   try {
     const n = JSON.parse(sh(TEMPER, ["next", "--json"], work));
     const m = {};
+    const tos = {};
+    const qids = {};
+    const asks = [n.ask, n.ask?.more, n.ask?.accept, n.context_check].filter(Boolean);
+    for (const a of asks) if (a.question?.question && a.id) qids[a.question.question] = a.id;
+    for (const b of n.blocking_asks || []) if (b.question?.question) qids[b.question.question] = b.question_ids?.id || "intent.blocking";
     for (const o of [...(n.ask?.options || []), ...(n.ask?.more?.options || []), ...(n.context_check?.options || [])]) {
       if (o && o.label) m[o.label] = o.move ?? null;
+      const to = (o?.calls || []).map((c) => /\bstate loop \S+ (\S+)/.exec(c)?.[1]).find(Boolean);
+      if (o && o.label && to) tos[o.label] = to;
     }
-    return { moves: m, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
+    return { moves: m, tos, qids, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
   } catch {
-    return { moves: {}, action: "unknown", stage: null };
+    return { moves: {}, tos: {}, qids: {}, action: "unknown", stage: null };
   }
+}
+
+// Which code ran: the plugin's version and commit, and whether the mod's folder was loaded with it.
+function stamp(arm) {
+  const plugin = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
+  let commit = null;
+  try {
+    commit = sh("git", ["rev-parse", "HEAD"], PLUGIN).trim();
+  } catch {
+    commit = null;
+  }
+  return { plugin_version: plugin.version ?? null, plugin_commit: commit,
+    mod: arm === "temper" && fs.existsSync(path.join(PLUGIN, "hooks", "temper-mod")) };
 }
 
 function copySessionLog(sessionId, dest) {
@@ -111,8 +178,7 @@ async function main() {
   const taskText = fs.readFileSync(path.join(taskDir, "task.md"), "utf8").trim();
   // A bug task goes through Temper's bug flow (/temper:fix); a feature through the whole pipeline.
   const meta = JSON.parse(fs.readFileSync(path.join(taskDir, "meta.json"), "utf8"));
-  // meta.command: a task that starts at a door (a prepared plan entered with /temper:build) names it
-  const temperCmd = meta.command || (meta.kind === "bug" ? "/temper:fix" : "/temper:temper");
+  const temperCmd = meta.kind === "bug" ? "/temper:fix" : "/temper:temper";
   const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");
@@ -141,6 +207,7 @@ async function main() {
   const briefPath = path.join(taskDir, "brief.md");
   const brief = fs.existsSync(briefPath) ? fs.readFileSync(briefPath, "utf8").trim() : null;
   const elicited = new Set();
+  const kept = {};   // WP32: the records keepRecords holds for this run
   let personCost = 0;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), Number(a["timeout-min"]) * 60_000);
@@ -161,10 +228,14 @@ async function main() {
       if (toolName !== "AskUserQuestion") return { behavior: "allow", updatedInput: input };
       questions++;
       if (questions > 60) return { behavior: "deny", message: "The person has left: too many questions.", interrupt: true };
-      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, action: null, stage: null };
+      if (a.arm === "temper") keepRecords(work, out, kept);
+      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, tos: {}, qids: {}, action: null, stage: null };
+      // each line: the dialog it was asked in (a dialog of four Blocking questions is four lines with one index), the
+      // question's id, the move of the answer and the stage a step back goes to, when the CLI gave them
+      const ids = (q, ans) => ({ dialog: questions, qid: ctx.qids[q] ?? null, move: ctx.moves[ans] ?? null, to: ctx.tos[ans] ?? null });
       if (!brief) {
         const { updatedInput, log } = answer(input, ctx.moves);
-        for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...l }) + "\n");
+        for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...ids(l.question, l.answer), ...l }) + "\n");
         return { behavior: "allow", updatedInput };
       }
       // Vague task: a Temper gate (its options are the CLI's) and a request for a typed name keep the fixed
@@ -184,8 +255,8 @@ async function main() {
           used.forEach((u) => elicited.add(u));
         }
         answers[q.question] = ans;
-        px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, who, header: q.header, question: q.question,
-          options: opts.map((o) => o.label), answer: ans, used }) + "\n");
+        px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...ids(q.question, ans), who, header: q.header,
+          question: q.question, options: opts.map((o) => o.label), answer: ans, used }) + "\n");
       }
       return { behavior: "allow", updatedInput: { ...input, answers } };
     },
@@ -193,6 +264,7 @@ async function main() {
 
   const results = [];
   let sessionId = null;
+  let claudeCode = null;
   let ended = "done";
   // Temper can end a turn before the run is over (an agent in the background, a stop it asks for). A
   // person would type to go on, so the harness resumes the session with the same command, at most 5 times.
@@ -206,7 +278,9 @@ async function main() {
       let lastText = "";
       for await (const m of query({ prompt: p, options: { ...options, ...(sessionId ? { resume: sessionId } : {}) } })) {
         tx.write(JSON.stringify(m) + "\n");
+        if (a.arm === "temper" && m.type === "user") keepRecords(work, out, kept);   // a tool ran: a record may have grown
         if (m.session_id) sessionId = m.session_id;
+        if (m.type === "system" && m.subtype === "init" && m.claude_code_version) claudeCode = m.claude_code_version;
         if (m.type === "result") results.push(m);
         if (m.type === "assistant" && !m.parent_tool_use_id) {
           const t = (m.message?.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
@@ -233,6 +307,7 @@ async function main() {
     ended = abort.signal.aborted ? "timeout" : `error: ${e?.message || e}`;
   } finally {
     clearTimeout(timer);
+    if (a.arm === "temper") keepRecords(work, out, kept);
   }
 
   const sum = (k) => results.reduce((s, r) => s + (Number(r[k]) || 0), 0);
@@ -247,6 +322,7 @@ async function main() {
   const totalCost = cumulative ? Number(results.at(-1).total_cost_usd) || 0 : sum("total_cost_usd");
   const run = {
     task: a.task, arm: a.arm, rep: Number(a.rep), base, ...(a["task-dir"] ? { task_dir: taskDir } : {}),
+    ...stamp(a.arm), claude_code_version: claudeCode,
     model_requested: a.model || "default",
     models_cost_usd: models,
     cost_usd: Number(totalCost.toFixed(4)),

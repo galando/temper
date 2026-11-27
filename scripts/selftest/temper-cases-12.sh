@@ -53,7 +53,7 @@ fresh; gpass intent plan build review check; _at check
 printf '# Tasks: demo\n\n**Integration:** `true`\n\n## Group G1: A\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n**Cases:**\n- a\n- [x] done\n\n## Group G2: B\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 2: b\n**File:** `src/b.sh`\n**Test:** `true`\n**Cases:**\n- b\n- [x] done\n' > .temper/specs/demo/tasks.md
 NXS="$("$TEMPER" next --json 2>/dev/null)"
 assert_eq "F23: with two or more Build groups the stacked option is offered too" "Commit and open stacked PRs" "$(_ev "d['ask']['more']['options'][0]['label']" "$NXS")"
-printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; _ran_unattended
 assert_eq "F23: an armed run is never offered a pull request" "0" "$(nx "str(sum(1 for o in d.get('ask', {}).get('options', []) if 'open' in o['label'].lower()))")"
 printf 'stack: auto\n' > .claude/temper.config
 
@@ -80,7 +80,9 @@ assert_eq "F26: red asks Apply the fix and push?, and the steps are the agreed o
   "$(nx "q = d['ask']; s = q['options'][0]['steps']; q['question']['question'].split('). ', 1)[1] + '|' + '|'.join([s[0].split('temper ', 1)[1], s[4], s[5].split('temper ', 1)[1], s[6].split('temper ', 1)[1], s[7].split('temper ', 1)[1]])")"
 assert_eq "F26: the commit step stages by name and never with -A" "0" "$(nx "str(sum(1 for s in d['ask']['options'][0]['steps'] if 'git add -A' in s or 'git add .' == s.strip()))")"
 "$TEMPER" state set pipeline_round 2 >/dev/null 2>&1; "$TEMPER" state set pipeline_round 3 >/dev/null 2>&1   # one round at a time
-assert_eq "F26: past loops.max-per-type rounds the question says the fix limit is reached" "Pipeline: the fix limit is reached (round 3 of 2). End the run?" "$(nx "d['ask']['question']['question']")"
+assert_eq "F26: past the CI fix rounds of the budget (key pipeline) the question is run.budget: the count, and the round only after Allow two more" \
+  "run.budget|count|save|Allow two more|End the run" \
+  "$(nx "q = d['ask']; '|'.join([q['id'], 'count' if 'The CI fix was repeated 2 times (limit 2)' in q['question']['question'] else q['question']['question'][:70], q['options'][0]['id'], q['options'][1]['label'], 'End the run' if any(o.get('id') == 'end-run' for o in q['options']) else 'no end'])")"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['pipeline_round']=1; json.dump(d, open(p,'w'))"   # back to round 1 (the CLI counts only up)
 "$TEMPER" state redo pipeline --reason "CI fix round 1 pushed; CI runs again" >/dev/null 2>&1
 assert_eq "F26: a redo removes the old verdict and the context file, so CI is read again" "none|no|work" \
@@ -93,25 +95,36 @@ fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/nu
 assert_eq "F26: with a pull request opened the sequence ends with Pipeline" "1" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
 assert_eq "F26: gate pipeline is a gate stage of the CLI" "1" "$("$TEMPER" gate pipeline 2>&1 | grep -c 'temper gate pipeline ->')"
 
-# --- F28. Leaving Intent when the run's branch exists from an earlier run with commits this checkout lacks ---
+# --- F28. The approval when the run's branch exists from an earlier run with commits this checkout lacks (WP12: no
+# branch is made before the approval, so the clash is the approval's, not a question of its own) ---
+_q12() { # _q12 <python over q, the question of next, and o(id), its option or More option of that id>: prints r
+  nx "q = d['ask']; o = lambda i: next((x for x in q['options'] + (q.get('more') or {}).get('options', []) if x['id'] == i), {}); $1"
+}
 fresh; rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git checkout -q -B main 2>/dev/null
 echo base > README; git add README; git commit -qm base; gpass intent
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"; git checkout -q main
-assert_eq "F28: the question names the branch and its last commit, and offers both ways on" "1|Continue on feature/demo|Continue on a new branch feature/demo-2" \
-  "$(nx "str(d['ask']['question']['question'].count('The branch feature/demo already exists from an earlier run')) + '|' + d['ask']['options'][0]['label'] + '|' + d['ask']['options'][1]['label']")"
-assert_eq "F28: the first one carries the spec across with a temp folder, never git stash" "1|0" \
-  "$(nx "c = d['ask']['options'][0]['calls'][0]; str(int('mktemp -d' in c and 'git checkout feature/demo' in c)) + '|' + str(c.count('git stash'))")"
-assert_eq "F28: the new branch option checks it out and sets the state branch" "git checkout -b feature/demo-2|state set branch feature/demo-2" \
-  "$(nx "o = d['ask']['options'][1]['calls']; o[0] + '|' + o[1].split('temper ', 1)[1]")"
+assert_eq "F28: the approval names the branch and its last commit, and continues on it" "1|1|Build on a new branch feature/demo-2" \
+  "$(_q12 "str(int('The branch feature/demo exists from an earlier run' in q['question']['question'] and 'its last commit is ' in q['question']['question'])) + '|' + str(q['question']['question'].count('The approval continues on it.')) + '|' + o('new-branch').get('label', 'none')")"
+assert_eq "F28: the approval carries the spec across with a temp folder, never git stash" "1|0|0" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if ' spec branch --carry feature/demo' in x)) + '|' + str(sum(x.count('git stash') for x in c)) + '|' + str(sum(1 for x in c if 'mktemp -d' in x or 'git checkout' in x))")"
+assert_eq "F28: the new branch option only sets the state branch, and is no approval" "state set branch feature/demo-2|redo" \
+  "$(_q12 "x = o('new-branch'); '|'.join(c.split('temper ', 1)[1] for c in x['calls']) + '|' + str(x['move'])")"
 git branch -q feature/demo-2 main 2>/dev/null
-assert_eq "F28: the new number is the next free one" "Continue on a new branch feature/demo-3" "$(nx "d['ask']['options'][1]['label']")"
+assert_eq "F28: the new number is the next free one" "Build on a new branch feature/demo-3" "$(_q12 "o('new-branch').get('label', 'none')")"
 git branch -D feature/demo-2 >/dev/null 2>&1
+"$TEMPER" state set branch feature/demo-2 >/dev/null 2>&1
+assert_eq "F28: after the new branch the approval is asked again with no clash, and switches plainly" "0|1|none" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(q['question']['question'].count('exists from an earlier run')) + '|' + str(sum(1 for x in c if ' spec branch' in x)) + '|' + o('new-branch').get('label', 'none')")"
+"$TEMPER" state set branch feature/demo >/dev/null 2>&1
 git checkout -q feature/demo; git checkout -q -B plain main; git branch -f feature/demo main
-assert_eq "F28: a branch with no extra commits keeps the plain switch" "Continue to Plan (Recommended)" "$(labels | cut -d'|' -f1)"
+assert_eq "F28: a branch with no extra commits keeps the plain switch" "1|0" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if ' spec branch' in x)) + '|' + str(sum(1 for x in c if 'mktemp -d' in x))")"
 # the carry-across call really moves the new spec files across the switch
 git branch -f feature/demo main; git checkout -q feature/demo; echo old > old.txt; git add old.txt; git commit -qm "earlier"; git checkout -q plain
 mkdir -p .temper/specs/demo; echo "# new intent" > .temper/specs/demo/intent.md
-CALL="$(nx "d['ask']['options'][0]['calls'][0]")"
+CALL="$(_q12 "next(x for x in o('ask-every-stage')['calls'] if ' spec branch --carry ' in x)")"
+bash -c "$(_q12 "o('ask-every-stage')['calls'][0]")" >/dev/null 2>&1   # WP32, rule 1 (D30): the option's bind goes first
 bash -c "$CALL" >/dev/null 2>&1
 assert_eq "F28: the carry call lands on the branch with the new spec file in place, and no temp folder is left" "feature/demo|# new intent|yes" \
   "$(git branch --show-current)|$(cat .temper/specs/demo/intent.md)|$([[ -f old.txt ]] && echo yes || echo no)"

@@ -26,8 +26,8 @@ The plugin folder is the folder Temper is installed in: the folder that holds
 Only if the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall
 it." Never search the disk for the plugin folder and never guess another one. The temper
 CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
-path that does not start with the plugin folder (`.temper/`, the spec files,
-`.claude/temper.config`) is in the user's project, the current directory.
+path that does not start with the plugin folder (`.temper/`, the spec files, the project's config) is in the
+user's project, the current directory.
 
 ## The run files
 
@@ -40,7 +40,7 @@ stop, show its one line reason, and wait for the person. Never remove, replace o
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
   "branch": "{feature|fix}/{slug}", "command": "temper|fix", "next_stage": "{next}",
   "run_mode": "interactive|autonomous", "run_id": "{16 hex}", "step": 0,
-  "feature": "{as the person typed it}", "enter": "{a door's stage}", "base_sha": "{sha}",
+  "feature": "{as the person typed it}", "base_sha": "{sha}",
   "approved_files": ["{the plan's files when the person approved it}"], "parked": "{stage}",
   "redo": {"stage": "build", "reason": "{what to mend}"}, "started": "{ISO}", "updated": "{ISO}" }
 ```
@@ -50,12 +50,10 @@ on branch `feature/{slug}`; `/temper:fix` is rca, fix, review, check, commit, on
 Every change of `next_stage` counts one `step`; a step back clears the verdicts of the stages it redoes.
 A run moves forward only by `state advance` (a forward `state set next_stage`, and a `state loop` to a
 later stage, are refused), and entering Commit clears any earlier commit verdict, so the commit gate
-runs for the run itself. `base_sha` is recorded when the run leaves Plan: HEAD, or, for a door into
-Review or Check, where the feature started (before the commit that added its `intent.md`, else where
-the branch left main or master), so the work the door reviews is in the diff.
+runs for the run itself. `base_sha` is recorded when the run leaves Plan: HEAD.
 
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
-`.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),
+`.temper/overrides.json` (the person's skips), `.temper/budget.json` (the repeats),
 `.temper/usage.json` (whole flow usage rows `{stage, model, ms, task, group, ts}`, from
 `temper usage add` after each stage launch and from `temper task gate --ms` for each task
 agent, so each launch is counted once; the time is the total Claude Code gives for the agent, and no
@@ -75,16 +73,14 @@ status and gate verdict; each task's status, attempts and commit; the integratio
 
 ## MCP Tool-First Pattern
 
-`tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
-`heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
-unavailable, no fallback). Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
+An agent uses a connected MCP tool when there is one and falls back to a grep based heuristic when there is none.
+Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 
 | Label | Meaning |
 |---|---|
 | `PROVEN` | Mechanically verified: a real command or tool ran with a real exit code and artifact. `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
 | `HEURISTIC` | Grep/reading-based analysis, best-effort, not mechanically verified. |
 | `SEMANTIC` | Claude's judgment/interpretation — inherently subjective. |
-| `OCR` | External engine (open-code-review) finding — informational, same trust tier as HEURISTIC. |
 
 Recommended servers: code-review-graph for AST-level dependency graphs and blast radius
 (install it as its own page says: https://github.com/tirth8205/code-review-graph), and
@@ -119,19 +115,15 @@ justifications a gate doesn't need but a re-launched agent does.
   "test_failures": [ { "test_name": "", "error_message": "", "file": "", "line": 0, "scenario": "" } ] }
 ```
 
-`review-memory.json` (Review writes, Status + Review read — the single finding memory:
-pattern acceptance/dismissal, promotion, and suppression). See
-`${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
-
 | Stage | Reads | Writes |
 |---|---|---|
 | Intent | nothing (first stage) | intent.md (Problem/criteria/constraints — no scenarios) |
 | Plan | intent.md (accepted) | intent.md (adds Scenarios), tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
-| Review | intent.md, `git diff`, build-context.json, review-memory.json | review-context.json, review-memory.json |
+| Review | intent.md, `git diff`, build-context.json | review-context.json |
 | Check | intent.md, review-context.json | check-context.json |
-| Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
+| Status | gates.json, evidence/ | — |
 
 **Cleanup:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (on commit) removes the run state (`build-state.json`,
 the loop counters, `gates.json`, `overrides.json`) and the evidence ledger. Nothing under
@@ -150,9 +142,10 @@ with failure context.
   the `intent.md` scenario it maps to) → "Loop back to Build". Context:
   `check-context.json`'s `test_failures[]`.
 - **Build → Plan:** Build judges the plan infeasible → "Loop back to Plan", Plan gets the
-  infeasibility context and re-approves. Human-driven only — no circuit breaker, max 1
-  per run. Context: `build-context.json`'s infeasibility reason.
+  infeasibility context and re-approves. The person's only; the budget bounds it.
+  Context: `build-context.json`'s infeasibility reason.
 
-**Budget and clearing:** `temper state loop` enforces the budget (`loops.max-per-type`) and clears
-the evidence, the verdicts and the skips of the stages it redoes. A loop is a normal stage launch that
+**Budget and clearing:** every repeat after a failed check spends the run's budget (ADR 0019, 2 per
+failure, 6 per run); `temper state loop` clears the evidence, the verdicts and the skips of the stages
+it redoes. A loop is a normal stage launch that
 reads the relevant `review-context.json` or `check-context.json` at startup.

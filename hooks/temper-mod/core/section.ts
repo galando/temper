@@ -9,7 +9,10 @@ import type { View } from './view'
 export const SECTION_ID = 'temper:phase'
 
 // What a message from the user at a gate means: the gate's "Other" choice. Also in commands/temper.md.
-export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. If it asks for a change, make the change, run the gate again, then ask the gate question again.'
+export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. A change it asks for is a typed answer: run the question\'s typed calls with it (the stage runs again with that note) and never edit a file for it yourself; then ask the gate question again.'
+
+// The line with no run (P8, R8-W31-1: Stage, the word of scripts/words.json, never the retired Phase).
+export const NO_RUN = 'Stage: none. No Temper run is active.'
 
 export type SectionInput = {
   enforcement: 'on' | 'off'
@@ -23,14 +26,14 @@ export function sectionText(input: SectionInput): string {
   const lines: string[] = [input.enforcement === 'on' ? 'Temper enforcement: active' : 'Temper enforcement: off (UI only)']
   const v = input.view
   if (v === null || v.stage === null) {
-    lines.push('Phase: none. No Temper run is active.')
+    lines.push(NO_RUN)
     if (input.line) lines.push(input.line)
     return lines.join('\n')
   }
-  let phase = `Phase: ${v.stage === 'commit' ? 'Done' : stageLabel(v.stage)}`
-  if (v.wait === 'saved') phase += ' (saved for later)'
-  if (v.title) phase += ` · Intent: "${v.title}"`
-  lines.push(phase)
+  let stage = `Stage: ${v.stage === 'commit' ? 'Done' : stageLabel(v.stage)}`
+  if (v.wait === 'saved') stage += ' (saved for later)'
+  if (v.title) stage += ` · Intent: "${v.title}"`
+  lines.push(stage)
   if (v.total > 0) {
     const ids = v.criteria.filter(c => c.status === 'passed').map(c => c.id)
     lines.push(`Criteria: ${v.passed} of ${v.total} passed${ids.length > 0 ? ` (${ids.join(', ')})` : ''}`)

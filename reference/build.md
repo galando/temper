@@ -5,15 +5,14 @@ description: "The TDD method of Build: what to test, in what order, and the fix 
 # Build: Execute Plan with Quality Gates
 
 **Goal:** Implement the approved plan with real TDD discipline.
-The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
+The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --phase red/green` invocations (the CLI runs the command; 9.8.5)
 the gate needs; this doc is the methodology behind what to test and in what order.
 
 **Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —
 no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
-Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
-shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
-where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
-present. The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
+Prerequisites/blast-radius section, the pack files your prompt lists on its `Packs:` line (the CLI chose those of
+Build). The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit
+of the run.
 
 ## Execute Tasks in Order
 
@@ -28,18 +27,17 @@ For each task in `tasks.md`:
 
 **a. Read context** — existing files, adjacent patterns, conventions. Before writing
 code for the task, use any connected cross-repo code search tool (for example a
-Sourcegraph MCP) for definitions and prior art; with none connected, or
-`tools.mode: heuristic-only`, proceed with local tools. Record the outcome in
+Sourcegraph MCP) for definitions and prior art; with none connected, proceed with local
+tools. Record the outcome in
 `build-context.json` as `"code_search": {"tool": "{name}", "queries": N}` or
 `{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
 a missing record does.
 
 **b. Write the test first — priority order, first match wins:**
 
-1. **`intent.md` exists** → scenario-driven, regardless of whether a TDD pack is
-   enabled: one test per Gherkin scenario minimum, Given→setup, When→action, Then→
-   assertions. If a TDD pack is *also* enabled, intent.md drives WHAT to test and the
-   pack enforces HOW (RED→GREEN→REFACTOR discipline, naming conventions).
+1. **`intent.md` exists** → scenario-driven, regardless of whether a TDD pack is enabled: one test per scenario minimum,
+   written from its `Then` line (its assertions) and the Cases of the task that owns it. If a TDD pack is *also*
+   enabled, intent.md drives WHAT to test and the pack enforces HOW (RED→GREEN→REFACTOR discipline, naming conventions).
 2. **TDD pack enabled, no intent.md** → RED→GREEN→REFACTOR from the pack's rules.
 3. **Neither** → implement without an enforced test-first step.
 
@@ -57,19 +55,18 @@ written before the person's `Drift decision:` line allows it (list it in the Bui
 `unplanned_files` with that decision and a one-line reason; a task skipped/failed →
 `skipped_tasks` with a reason; an
 approach that materially differs from the plan (different library/pattern) →
-`approach_changes`. Only track when `tasks.md` exists. The Traceability Check (below)
-reconciles these against each task's `Traced to:` field.
-**f. Simplify** — if the `code-simplifier` agent is available, run it on the files you
-just touched (not the whole codebase); preserve behavior, improve clarity only.
+`approach_changes`. Only track when `tasks.md` exists. At the commit the CLI writes them to the spec's `deviations.md`
+(`temper spec deviations`). **f. Simplify** — if the `code-simplifier` agent is available, run it on the files you just
+touched (not the whole codebase); preserve behavior, improve clarity only.
 
 ## Scenario tests: the Build gate reads them
 
-A scenario of `intent.md` carries a `Test:` command. A task owes the scenarios its `Traced to:` line names: write each
-test under the exact name the command gives. The task gate runs the scenarios the task owes in its worktree (a scenario
-traced to several tasks runs at the task all the others precede, else at the group gate), and the group gate runs the
-group's on the merged group branch. `temper integrate` then runs every `Test:` command on the merged tree and records one
-CLI-run row each; a failing command records a failing row and Build's gate names the scenario, its command and the exit.
-A pytest exit 4 or 5 means no test has that name: write it under the name the command gives.
+A scenario of `intent.md` carries a `Test:` command. A task owes the scenarios whose `Test:` command runs a file it
+declares: write each test under the exact name the command gives. The task gate runs the scenarios the task owes in its
+worktree (a scenario owed by several tasks runs at the task all the others precede, else at the group gate), and the
+group gate runs the group's on the merged group branch. `temper integrate` then runs every `Test:` command on the merged
+tree and records one CLI-run row each; a failing command records a failing row and Build's gate names the scenario, its
+command and the exit. A pytest exit 4 or 5 means no test has that name: write it under the name the command gives.
 
 ## Scenario Coverage (BDD): the Check gate reads it
 
@@ -83,35 +80,17 @@ Scenario Coverage: X/Y scenarios covered
  [ ] Scenario: Rate limiting -> MISSING — writing test...
 ```
 
-A scenario's `Note:` field picks the testing approach: `unit` (default), `mock`
-(external dependency, verify the interaction), `integration` (write one if test infra
-exists, else mock), `manual` (skip automated coverage, log "requires manual
-verification" — still counts as covered in the tally, flagged with ⚠️ in the report).
-
-Then write the results back into `intent.md`'s `## Scenario Coverage Checklist`:
-`- [x] {Scenario Name} -> {TestClass.test_method}` per passing test (a `- [ ] ... NO
-TEST` line should never survive the gate above — if it does, that's a gate-logic bug,
-not an acceptable output). A test name should contain the scenario name; one test can't
-satisfy two scenarios, but one scenario may need more than one test (happy path +
-variant).
+A test name should contain the scenario name; one test cannot satisfy two scenarios, but one scenario may need more
+than one test (happy path and a variant).
 
 If no `intent.md`: skip this gate, proceed as before.
 
-## Success Criteria Validation (IDD enforcement) — non-blocking
+## Success Criteria Validation (IDD enforcement)
 
-For each success criterion with `Validate: code — {pattern}`: grep for the pattern; ✅ if
-found, WARN "Success criterion not met: {criterion}" if not. `Validate: scenario` is
-already covered by the gate above; `Validate: metric`/`manual` defer to `/temper:review`.
-This is a WARN, not a blocker — report it, don't stop the build over it.
-
-## Traceability Check — non-blocking
-
-If `tasks.md` has `Traced to:` fields: for each unplanned file from the deviation log
-with no justification, WARN "trace to a scenario or mark as infrastructure"; for each
-planned file that was never touched, WARN "is the task complete?". Report `N/M files
-match plan ({D} deviations tracked)`. No `Traced to:` fields → skip (backward
-compatible). This is signal, not a gate; the scenario coverage above is the hard one
-(at Check).
+A criterion validated by `code` or `metric` carries its command in backticks, and the CLI runs it when Build ends
+(`temper integrate`) and at Check, and records the row itself (9.8.5): the Build gate's `criteria validated` row passes
+it only from that row. Record nothing for it. `Validate: scenario` is covered by the gate above; a `manual` criterion,
+or a `code` or `metric` one with no command, is the person's to confirm at the Check question.
 
 ## Context Output
 
@@ -140,13 +119,7 @@ project's `.temper/specs/{slug}/review-context.json` or
 **Infeasible plan:** if the plan itself can't work (an API doesn't exist, the
 architecture is incompatible), write the infeasibility reason in `build-context.json` and
 say so in the panel. The person can choose "Loop back to Plan" at the Build question, which
-the CLI writes; the loop budget counts it.
-
-**Writing framework code:** apply the `source-driven-development` skill when a task
-uses a framework/library API — detect the pinned version, verify the call against
-current official docs rather than trained-in memory, and cite the source. It's how a
-"hallucinated API" (the exact defect the orders-api fixture plants) gets caught while
-writing, before Review has to flag it. Skip it for plain application logic.
+the CLI writes; the budget counts it.
 
 ## Post-Implementation
 
@@ -166,8 +139,8 @@ complete`); the stage does not.
 
 ## Quality Gates (pattern → pack rule → level)
 
-Apply the temper-core skill for SUGGEST/WARN/BLOCK definitions. Representative mapping —
-the packs are the source of truth, this is illustrative, not exhaustive:
+A BLOCK rule must be fixed before the stage ends, a WARN is shown and the developer decides, a SUGGEST never blocks.
+Representative mapping (the packs are the source of truth; this is illustrative, not exhaustive):
 
 | Pattern | Rule | Level |
 |---|---|---|

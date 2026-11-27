@@ -4,8 +4,9 @@
 //                    a loop back to Intent that the next Plan agent hears about, a complex plan built on sonnet, a fresh
 //                    review with a tests lens whose medium finding reaches the builder, a group check that fails after
 //                    every task passed (fixed by one fix agent on the merged tree), temper output, a usage time filled late.
-//   pyjokes-full     a medium plan at risk H: two fresh reviewers, a high finding answered and rechecked, Design, a
-//                    critical Review finding that loops back to the Build fix pass, then a /temper:fix run.
+//   pyjokes-full     a medium plan at risk H: two fresh reviewers, a high finding answered and rechecked, no Design
+//                    (WP14: it runs only when asked), a critical Review finding repaired in its stage (WP24),
+//                    then a /temper:fix run.
 //   pyjokes-blocked  a task whose test needs a file another task declares: `temper task blocked` parks it at once (no
 //                    retry, no escalation) and the person's question recommends the loop back to Plan.
 import fs from 'node:fs'
@@ -13,9 +14,14 @@ import path from 'node:path'
 
 import { orchestrate, orchestrateFix } from './loop'
 import type { Script } from './loop'
-import { chained, expect, recommended, t, worktreeOf } from './scenarios'
-import { ROOT, TEMPER, World } from './world'
+import { asksEveryStage, chained, expect, recommended, t, worktreeOf } from './scenarios'
+import { ROOT, TEMPER, World, acceptanceLock, reviewDone } from './world'
 import type { Json } from './world'
+
+// WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
+// 9.8.5 holds the block only as a comment)
+const checkLines = (text: string, lines: string): string =>
+  /^check:\n/m.test(text) ? text.replace(/^check:\n/m, `check:\n${lines}`) : `${text.replace(/\n*$/, '\n')}check:\n${lines}`
 
 const SPEC = '.temper/specs/pyjokes'
 const SUITE = 'python3 -m unittest discover -s unit -t .'
@@ -116,7 +122,7 @@ const PLAN = `# Plan: Unknown categories raise, and a chuck category
 ## Context Map
 - use: pyjokes/ (3 files) - the package the change reaches
 - use: unit/ (2 files) - the suite that checks it
-- reviewed: auto - every source is current and on topic
+- reviewed: pending
 
 ## Architecture
 core.py raises a new CategoryNotFoundError; jokes_en.py gains a chuck list.
@@ -175,7 +181,8 @@ function startPyjokes(w: World): void {
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'`))
+  // WP19: the commands go at the top of the check block, whatever the template holds there
+  fs.writeFileSync(cfg, checkLines(fs.readFileSync(cfg, 'utf8'), `  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
   fs.appendFileSync(cfg, '\nplan:\n  fresh-review: auto\n')
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)
@@ -245,8 +252,7 @@ const intentAgent = (seen: Seen) => (w: World, a: Json): void => {
   seen.note('intent-prompt', a.prompt)
   if (!w.exists(`${SPEC}/intent.md`)) w.write(`${SPEC}/intent.md`, INTENT)
 }
-const acceptance = (w: World): void => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") }
-const reviewDone = (w: World): void => { t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`) }
+const acceptance = (w: World): void => { t(w, acceptanceLock(w, SPEC)) }
 const groupFix = (w: World, a: Json): boolean => {
   // the fix agent reads the FAIL lines, runs the Validate command, and exports the new name
   const m = /Work only in its worktree (\S+) \(/.exec(String(a.prompt))
@@ -283,7 +289,7 @@ export const pyjokesRun = (w: World): void => {
       seen.note('group-fail', q)
       seen.note('output-G1', wd.run(`${TEMPER} output G1`).out)
     }
-    return recommended(ask, wd)
+    return asksEveryStage(ask, wd)   // WP11: the scenario reads the group question, which only that run asks
   }
   const end = orchestrate(w, { agents, person, instruction: (_w, text) => FINISH.test(text) }, 160)
 
@@ -310,7 +316,7 @@ export const pyjokesRun = (w: World): void => {
   expect(u1 !== 0 || /filled|recorded/.test(u2), `7d: a late time fills the row recorded without one (${u2.trim()})`)
 }
 
-// ---- pyjokes-full: risk H, a recheck, Design, a Review loop back to Build, then /temper:fix ----
+// ---- pyjokes-full: risk H, a recheck, no Design (WP14), a Review loop back to Build, then /temper:fix ----
 export const pyjokesFull = (w: World): void => {
   const seen = new Seen()
   startPyjokes(w)
@@ -342,15 +348,25 @@ export const pyjokesFull = (w: World): void => {
       seen.note('design-prompt', a.prompt)
       wd.write(`${SPEC}/design.md`, '# Design: unknown categories raise\n\n## Architecture\n\nOne exception class in core.py, exported by the package.\n\n## API Contracts\n\nget_jokes(category) raises CategoryNotFoundError(category).\n\n## Areas of Concern\n\nNone flagged: the change is one module and its export.\n')
     },
-    'temper:temper-review': wd => {
+    'temper:temper-review': (wd, a) => {
+      // WP24: the recheck of the repair in the stage (the brief's `Re-check:`): the finding is fixed once the code raises
+      // the clear error
+      const prompt = String(a.prompt ?? '')
       reviews++
+      if (/Re-check:/.test(prompt)) {
+        const fixed = wd.read('pyjokes/core.py').includes('if not jokes:')
+        const found = [...new Set([...prompt.matchAll(/#(\d+)/g)].map(x => x[1]!))]
+        for (const id of found) t(wd, `evidence add --stage review --claim 'recheck #${id}: ${fixed ? 'fixed' : 'not fixed'}' --exit ${fixed ? 0 : 1} --cmd recheck`)
+        t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd recheck --value ${found.length} --read pyjokes/core.py --read unit/test_empty.py`)
+        return
+      }
       if (reviews === 1) t(wd, `evidence add --stage review --severity critical --claim 'pyjokes/core.py:14 get_joke on an empty category raises IndexError from random.choice, not a clear error' --exit 1 --cmd 'review panel'`)
       reviewDone(wd)
     },
   }
   const person = (ask: Json, wd: World): string | { label: string; note?: string } | null => {
     seen.note('question', `${String(ask.question.question)} [${(ask.options as Json[]).map(o => String(o.label)).join(' | ')}]`)
-    return recommended(ask, wd)
+    return asksEveryStage(ask, wd)   // WP11: the scenario reads the Review question, which only that run asks
   }
   const end = orchestrate(w, { agents, person, instruction: (_w, text) => FINISH.test(text) }, 160)
 
@@ -360,11 +376,12 @@ export const pyjokesFull = (w: World): void => {
   expect(qs.some(q => q.startsWith('Plan: the check failed') && q.includes('[Revise the plan (Recommended)')), 'a high fresh finding fails the plan gate and Revise the plan is recommended')
   expect(plan.passes() >= 2 && seen.of('plan-prompt')[1]!.includes('the Case for get_joke names no message'), 'the Plan agent gets the finding to answer')
   expect(rp.some(p => p.includes('Lenses: recheck.') && p.includes('Earlier findings (') && p.includes('Changed task blocks: Task 1.')), 'round 2 is a recheck of the earlier findings on the changed block')
-  expect(seen.of('design-prompt').length === 1, 'Design ran once (risk H)')
+  expect(seen.of('design-prompt').length === 0, 'Design did not run: risk H adds no stage, the person did not ask for it (WP14)')
   const models = seen.of('build-model')
   expect(models.length > 0 && models.every(m => /sonnet/.test(m)), `risk H builds its tasks on sonnet (${models.join('; ')})`)
   expect(seen.of('build-prompt').some(p => p.startsWith('Task 3') && p.includes('Plan review note: [tests] Task 3')), 'the medium finding reaches the builder as a note')
-  expect(qs.some(q => q.startsWith('Review: the check failed')) && seen.of('fix-prompt').some(p => p.includes('Feedback re-entry') || p.includes('What the stage before the loop left open')), 'a critical Review finding loops back to the Build fix pass, with the finding in its prompt')
+  expect(seen.of('fix-prompt').some(p => p.includes('Repair in place:') && p.includes('get_joke on an empty category')) && !qs.some(q => q.startsWith('Review: the check failed')),
+    'WP24 a critical Review finding is repaired in its stage: a fresh Build agent told Repair in place, with the finding in its prompt, and no Review question')
   expect(reviews === 2, `Review ran again after the fix pass (${reviews})`)
   expect(end.action === 'none', `the feature run ended (last action ${end.action})`)
   const files = w.run('git diff --stat main...HEAD').out
@@ -379,7 +396,15 @@ export const pyjokesFull = (w: World): void => {
   w.run(`${TEMPER} state clear`)
   const bug = '.temper/specs/bug'
   const fixAgents: Script['agents'] = {
-    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: every category is looked up upper cased\n\n## Root cause\n\nget_jokes upper cases the category before the lookup, and every key is lower case.\n\n## Fix\n\nLook the category up as given.\n'),
+    // R3-1: rca.md as agents/rca.md asks for it: the fields the CLI's card and question read, not headings only
+    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: every category is looked up upper cased\n\n'
+      + 'CAUSE: get_jokes upper cases the category before the lookup, and every key is lower case.\n'
+      + 'AT: pyjokes/core.py:1\nCONFIDENCE: HIGH\nSINCE: unknown\n'
+      + 'CHAIN: get_jokes -> the upper cased category -> no joke is found\n'
+      + 'FIX: Look the category up as given.\n'
+      + 'TEST: the regression test locks that a category is found as given\n\n'
+      + '## Root cause\n\nget_jokes upper cases the category before the lookup, and every key is lower case.\n\n'
+      + '## Blast radius\n\n- pyjokes/core.py\n'),
     'temper:temper-fix': wd => {
       wd.write('unit/test_case.py', 'import unittest\n\nfrom pyjokes import get_jokes\n\n\nclass CaseTest(unittest.TestCase):\n    def test_neutral_is_found_as_given(self):\n        self.assertTrue(get_jokes("neutral"))\n')
       t(wd, `evidence run --stage build --phase red --claim 'regression test: a category is found as given' -- python3 -m unittest unit.test_case`)

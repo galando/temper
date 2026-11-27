@@ -25,7 +25,7 @@ printf '# Tasks: demo\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n
 assert_eq "F15: the stop for a plan with no groups is the same with the mod off, and Build does not stop for the mod" "same|0" \
   "$(_same_with_mod_off)|$(TEMPER_MOD=off "$TEMPER" next --json | grep -c 'TEMPER_MOD')"
 assert_eq "F15: nothing in the CLI, the flow or the orchestrator page reads or sets TEMPER_MOD" "0" \
-  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper scripts/flow.py scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
+  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper $CLI_MODULES $FLOW_FILES scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
 
 # --- F4. A failed call stops its action; an agent's gate call named gate is the one exception ---
 assert_eq "F4: commands/temper.md and docs/flow.md state the rule" "1|1" \
@@ -35,7 +35,7 @@ assert_eq "F4: the agent's gate call is the last of its after calls and is named
 
 # --- F23. Every pull request is a draft: no step, brief or page runs gh pr create without --draft, and none runs gh pr ready ---
 assert_eq "F23: no gh pr create without --draft, and no gh pr ready command, in the flow, the references and the briefs" "0|0" \
-  "$(cd "$REPO_ROOT" && grep -rhE 'gh pr create' scripts/flow.py scripts/cli_ctx.py reference agents commands | grep -v -e '--draft' -e 'never' -e 'without' | wc -l | tr -d ' ')|$(cd "$REPO_ROOT" && grep -rhE '^[[:space:]]*(\$ )?gh pr ready' reference agents commands scripts/flow.py | wc -l | tr -d ' ')"
+  "$(cd "$REPO_ROOT" && grep -rhE 'gh pr create' $FLOW_FILES scripts/cli_ctx.py reference agents commands | grep -v -e '--draft' -e 'never' -e 'without' | wc -l | tr -d ' ')|$(cd "$REPO_ROOT" && grep -rhE '^[[:space:]]*(\$ )?gh pr ready' reference agents commands $FLOW_FILES | wc -l | tr -d ' ')"
 
 # --- F22. A real Maven run needs java and the artifacts; without them the case says SKIP and counts as nothing ---
 if command -v mvn >/dev/null 2>&1 && command -v java >/dev/null 2>&1 && [[ -d "${HOME:-/nonexistent}/.m2" ]]; then
@@ -114,18 +114,21 @@ PYEOF
 assert_eq "F1: with Task 2 independent, the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
   "$(nx "a = [x for x in d['agents'] if x['tasks'] == [1]][0]['prompt']; str(a.count(\"Person's note: Task 1: use the retry helper\")) + '|' + str(a.count('leave this alone'))")"
 
-# --- Run Check again: a measurement nobody took (a missing coverage tool) is not a defect in the code ---
+# --- Run Check again: a measurement nobody took (no test run recorded) is not a defect in the code. WP19: a coverage
+# not measured is no failed row at all, so the gap that stays is the run with no test evidence ---
 fresh; gpass intent plan build review; _at check
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
-assert_eq "Check: a missing coverage value offers Run Check again first (recommended), then Loop back to Build, and the small change under More options" \
+gfail check "tests pass" "no passing test-run evidence recorded"
+assert_eq "Check: a run with no test evidence offers Run Check again first (recommended), then Loop back to Build, and the small change under More options" \
   "Run Check again (Recommended)|Loop back to Build|Override and continue|More options" "$(labels)"
 assert_eq "Check: Run Check again runs state redo check with the reason, and moves nothing else" "state redo check|redo|1" \
   "$(nx "o = d['ask']['options'][0]; ' '.join(o['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + o['move'] + '|' + str(len(o['calls']))")"
 assert_eq "Check: the question asks Run Check again, not Loop back" "1" "$(nx "int(d['ask']['question']['question'].endswith('Run Check again?'))")"
 gfail check "tests pass" "the latest run of a test command failed: unit/test_cli.py"
-assert_eq "Check: a failing test is a defect in the code: Loop back to Build stays first, and there is no Run Check again" "Loop back to Build (Recommended)|0" \
-  "$(nx "d['ask']['options'][0]['label'] + '|' + str(sum(1 for o in d['ask']['options'] if o['label'].startswith('Run Check again')))")"
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
+assert_eq "WP24 Check: a failing test is a defect in the code: with no reviewed HEAD no Repair again, the loop back first and recommended, and there is no Run Check again" \
+  "back,True|back offered|0" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['id'] == 'redo'))")"
+gfail check "tests pass" "no passing test-run evidence recorded"
+sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # W23-6: no plan line the CLI can run either
 "$TEMPER" state redo check --reason "the measurement was missing" >/dev/null 2>&1
 assert_eq "Check: after state redo check the verdict is gone and the Check agent runs again" "work|temper:temper-check|none" \
   "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d.get('ask') and 'asked' or 'none')")"

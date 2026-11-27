@@ -13,7 +13,8 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import run_cmd, test_env  # noqa: F401
+from run_env import FAIL_LINE, LOG_LINE, SUMMARY, as_owner, env_fault, fail_lines, row_fields, run_cached, run_cmd, test_env  # noqa: F401
+import baseline
 import scenario_ops
 import maven_loop
 import tasks_md
@@ -119,16 +120,20 @@ def show(out, rc, keep=12):
     sys.stdout.write(''.join(lines))
     sys.stdout.flush()
 
-FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
+# FAIL_LINE, LOG_LINE, SUMMARY and fail_lines live in run_env.py (WP20: the baseline picks the same lines)
 
-def fail_lines(out, keep=8):
-    """9.8.4: the lines of a failing run that say what failed (FAIL, FAILED, ERROR, not ok, an exception), first ones first,
-    read from the whole output; when none matches, the last three lines. A question shows the first few, so the person
-    reads the failure, not the tail of whatever the runner printed last."""
-    lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
-    lines = [l[:240] for l in lines if l]
-    hits = list(dict.fromkeys(l for l in lines if FAIL_LINE.search(l)))
-    return hits[:keep] if hits else lines[-3:]
+def _shape(text):
+    """A signature as code reads it: qualifiers taken off names (`MonitoringSummary.AgencyHealth` and an imported
+    `AgencyHealth` are the same type), and the spaces that do not separate two words."""
+    t = re.sub(r'\b(?:[A-Za-z_]\w*\.)+(?=[A-Za-z_])', '', text)
+    t = re.sub(r'\s+', ' ', t)
+    return re.sub(r'\s*([(),<>\[\]{}:;=])\s*', r'\1', t).strip()
+
+def literal_found(literal, text):
+    """9.8.5 (Q5): an Interfaces literal is in the file as written, or with the same shape once names are unqualified:
+    a planned full type name may be imported and used short, and the reverse (an agent once rewrote three signatures
+    to full names only to pass a text match)."""
+    return literal in text or _shape(literal) in _shape(text)
 
 def red_why(r):
     """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
@@ -139,6 +144,32 @@ def red_why(r):
     if re.search(r'(^|[\s/\'"])pytest\b', cmd) and rc != 1:
         return 'pytest exits 1 when a test fails; %s is a collection, import or usage error' % rc
     return ''
+
+TEST_FILE = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go|sh)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+
+def file_hash(wt, f):
+    try:
+        return hashlib.sha256(open(os.path.join(wt, f), 'rb').read()).hexdigest()
+    except OSError:
+        return 'absent'
+
+def red_staged(r, wt, start, strict):
+    """9.8.5 (Q4): why a RED run is no failing-first proof, or ''. A RED whose code files are already the final code,
+    when this attempt wrote that code (it differs from the code the attempt started with), came after the code. With
+    build.red-before-code: true, a RED counts only when every code file is still as the attempt found it (no stub
+    either: a compile failure is the RED). A task with no declared code file is not judged here."""
+    h = r.get('red_hashes') or {}
+    if not h:
+        return ''
+    if strict:
+        moved = sorted(f for f, v in h.items() if start and v != start.get(f, 'absent'))
+        return ('the RED run came after a change to %s (build.red-before-code: the test fails first, on the code as it was)'
+                % ', '.join(moved)) if moved else ''
+    final = {f: file_hash(wt, f) for f in h}
+    done = all(v != 'absent' and final[f] == v for f, v in h.items())
+    written = not start or any(final[f] != start.get(f, 'absent') for f in h)
+    return ('the RED run was made on the final code (%s unchanged since): write the test first, see it fail, then the code'
+            % ', '.join(sorted(h))) if done and written else ''
 
 def red_ok(r):
     """A RED run counts when it failed on the tests themselves, not before they ran."""
@@ -365,9 +396,16 @@ elif mode == 'show':
         body += pb.decode('utf-8', 'ignore')
     sys.stdout.write(body)
 
+elif mode == 'codehash':
+    # codehash <worktree> <plan> <N>: the hash of each declared code file of Task N (not its tests) as JSON
+    wt, plan, n = sys.argv[2], json.loads(sys.argv[3]), int(sys.argv[4])
+    files = next((x['files'] for x in plan['tasks'] if x['n'] == n), [])
+    print(json.dumps({f: file_hash(wt, f) for f in files if not TEST_FILE.search(f)}))
+
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
+    timeout = baseline.limit_for(' '.join(cmd), timeout)   # WP20: three times the base's time of the same suite, at least
     before = untracked(wt)
     if len(cmd) == 1 and maven_loop.is_maven(cmd[0]):   # F22: a Maven test runs the declared test classes only, offline
         slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
@@ -376,16 +414,28 @@ elif mode == 'testrun':
         out, rc = run_cmd(wt, timeout, ['python3', '-E', '-s', loop, 'run', wt, str(timeout), cmd[0]] + task['files'])
     else:
         out, rc = run_cmd(wt, timeout, cmd)
+    if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit
+        baseline.timed_out(' '.join(cmd), timeout)
     # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
     # command's byproducts; the task verdict does not count them as undeclared changes
     byproducts = sorted(untracked(wt) - before)
     sys.stdout.write(out.decode('utf-8', 'replace'))
     sys.stdout.flush()
+    hashes = {}
+    if phase == 'red':   # 9.8.5 (Q4): what the declared code files held at the failing run
+        slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
+        try:
+            files = next((x['files'] for x in tasks_md.parse(os.path.join('.temper', 'specs', slug, 'tasks.md'))['tasks'] if x['n'] == int(n)), [])
+        except Exception:
+            files = []
+        hashes = {f: file_hash(wt, f) for f in files if not TEST_FILE.search(f)}
     row = {'claim': 'Task %s unit test %s' % (n, phase), 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': phase, 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'task': int(n), 'group': group,
            'attempt': int(attempt), 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
            'output': out[-4096:].decode('utf-8', 'replace'), 'byproducts': byproducts[:1000]}
+    if hashes:
+        row['red_hashes'] = hashes
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -394,15 +444,21 @@ elif mode == 'grouprun':
     # group and carries phase 'group', so it never counts as a task RED or GREEN run
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    # WP23 mechanism 2: the owner's test text runs in the owner's run text, so integrate reuses it on the merged tree
+    given = cmd
+    cmd, info = as_owner(wt, cmd)
+    out, rc, reused = run_cached(wt, timeout, cmd, info=info)
+    if rc == 127 and cmd != given:   # the coverage program could not start: the test text runs without it, as at check run
+        cmd, info = given, {}
+        out, rc, reused = run_cached(wt, timeout, cmd, info=info)
     show(out, rc)
-    row = {'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
-           'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
-           'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
-           'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-           'output': out[-4096:].decode('utf-8', 'replace')}
-    if rc != 0:
-        row['fail_lines'] = fail_lines(out)
+    row = dict({'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
+                'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
+                'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
+                'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'output': out[-4096:].decode('utf-8', 'replace')}, **row_fields(info))
+    if rc != 0:   # the whole list the run kept, which the gate compares with the base (baseline.like_base)
+        row['fail_lines'] = info.get('fail_lines') or fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -418,12 +474,16 @@ elif mode == 'integrun':
     # out of the task RED/GREEN counts
     wt, timeout, rowfile = sys.argv[2:5]
     cmd = sys.argv[6:]    # argv[5] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    info = {}
+    out, rc, reused = run_cached(wt, baseline.limit_for(' '.join(cmd), timeout), cmd, info=info)   # WP20: the limit from the base
     show(out, rc)
-    row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
-           'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
-           'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
-           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace')}
+    row = dict({'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
+                'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
+                'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
+                'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace')},
+               **row_fields(info))
+    if rc != 0:   # WP21: what failed, which integrate compares with the base's failures
+        row['fail_lines'] = fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -450,7 +510,7 @@ elif mode == 'ifcheck':
     # ifcheck <interfaces-json>: the first Interfaces entry whose literal is not in its file at HEAD
     for x in json.loads(sys.argv[2]):
         r = subprocess.run(['git', 'show', 'HEAD:' + x['path']], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        if r.returncode != 0 or x['literal'] not in r.stdout.decode('utf-8', 'replace'):
+        if r.returncode != 0 or not literal_found(x['literal'], r.stdout.decode('utf-8', 'replace')):
             print('interface missing: %s in %s' % (x['literal'], x['path']))
             sys.exit(1)
 
@@ -619,6 +679,14 @@ elif mode == 'verdict':
     reason = ''
     if green is None:
         reason = 'no green run for this task and attempt'
+    # 9.8.5 (Q4): a RED counts as the failing-first proof only when the attempt had not finished the code before it
+    start = (((run.get('tasks') or {}).get(str(n)) or {}).get('start_hashes')) or {}
+    strict = os.environ.get('TEMPER_RED_BEFORE_CODE', '').lower() == 'true'
+    reds = [r for r in mine[:green] if red_ok(r)] if green is not None else []
+    if reds and all(red_staged(r, wt, start, strict) for r in reds):
+        reason = red_staged(reds[-1], wt, start, strict)
+    elif green is None:
+        pass
     elif not any(red_ok(r) for r in mine[:green]):
         bad = [r for r in mine[:green] if r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
         reason = ('need a failing run before a passing run for this task and attempt' if not bad else
@@ -680,6 +748,16 @@ elif mode == 'verdict':
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
+    # ENV: the attempt's last run is a failing GREEN that shows a sure sign of the environment (run_env.env_fault: the
+    # setup line failed, a program is missing, a declared service does not answer; a time-out is the code's), a RED
+    # came before it, and nothing else is wrong. The task does not pass: it keeps its
+    # attempt and its worktree, and the person repairs the environment and checks it again.
+    env_why = ''
+    if (verdict == 'FAIL' and green is None and not problems and not c['manual'] and mine and mine[-1].get('phase') == 'green'
+            and mine[-1].get('exit_code') not in (0, None) and any(red_ok(r) for r in mine[:-1])):
+        env_why = env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '')
+    if env_why and os.environ.get('TEMPER_NO_ENV') != '1':   # M9: --no-env, the person said it is the code
+        verdict, reason = 'ENV', env_why
     red_cmd = red_tail = ''
     if covered:
         verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''

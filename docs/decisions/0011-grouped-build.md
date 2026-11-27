@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-10-10
 **Supersedes:** (none)
+**Amended by:** ADR-0019 (9.8.5: one budget; the run that goes on by itself is no longer Build alone)
+**Amended by:** ADR-0021 (9.8.5, resolution 1: the CLI also makes the repair commit of a finding)
 
 ## Context
 
@@ -61,7 +63,8 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
   mode opt-in and experimental, with the measurement recording and procedure built in.
 - **D-05** Nested subagents work by default but the user can turn them off, so the
   orchestrator launches every task agent (decision 1).
-- **D-06** Size budgets: task brief 6144 bytes, group Context 4096, task block 1536, as
+- **D-06** Size budgets: task brief 6144 bytes, group Context 4096, task block 2,048 (`TASK_BLOCK_MAX_BYTES`;
+  corrected in 9.8.5, this record named a smaller one), as
   constants in `scripts/temper`, tuned after the AC-12 comparison.
 - **D-07** Usage is recorded for every agent launch in every stage and both Build modes
   (`temper usage add`; `temper report` shows per stage and per model). Numbers are the

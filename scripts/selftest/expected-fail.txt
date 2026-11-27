@@ -1,0 +1,5 @@
+# The checks still expected to fail: one check a line, the package that makes it pass, the row of done.md it proves.
+# selftest:<token> lists every assertion whose name starts with the token and a space; e2e:<scenario> lists a scenario in
+# every mode, e2e:<scenario>:<mode> in one. A line leaves in the commit that makes its check pass, and never comes back.
+# suite:name                   passes after   promise
+# case file 46: migration, the front, the surface, and the README (WP07)

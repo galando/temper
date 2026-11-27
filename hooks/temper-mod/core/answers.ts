@@ -7,13 +7,16 @@
 import type { Ask, Option, Question, RunView } from './runview'
 
 export const CANCEL = 'Cancel'
+// WP16 (defect 2): the longest typed answer, the CLI's own (MAX_ANSWER of scripts/plan_ops.py), not 100
+export const MAX_ANSWER = 2000
 
 export type DriftChoice = 'add' | 'revert' | 'allow-once'
 
 export type Answer =
   // A gate question's option (and the reason, when the option needs one).
   // `ask` is the CLI's question of this step that the answer belongs to (More options and the reason question included).
-  | { kind: 'gate'; stage: string; question: string; ask: string; option: Option; reason: string }
+  // `questionId`: the id of that question in the CLI's registry (null in a view of the base): kept, never what makes it count.
+  | { kind: 'gate'; stage: string; question: string; ask: string; questionId: string | null; option: Option; reason: string }
   // The `Temper resume` question's Start over.
   | { kind: 'restart'; option: Option }
   // A Scope drift question's answer for one file.
@@ -30,6 +33,15 @@ export function answeredResult(result: unknown): Result | null {
   return r
 }
 
+// WP21: the person's note on the answer of one question of an answered dialog (its annotation), trimmed; '' for none.
+export function noteOf(result: unknown, question: string): string {
+  const r = answeredResult(result)
+  const notes = r?.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}
+  const row = notes[question]
+  const noted = row && typeof row === 'object' ? (row as { notes?: unknown }).notes : undefined
+  return typeof noted === 'string' ? noted.trim() : ''
+}
+
 const same = (a: { header: string; question: string }, header: unknown, text: unknown): boolean => a.header === header && a.question === text
 
 // Every question the view asks at this step: the gate question, its More options and Accept a finding questions, and the
@@ -41,6 +53,10 @@ function asks(a: Ask | null, check: Ask | null = null): Ask[] {
 
 // A word for a shell, in single quotes: a typed answer is data, so no character of it is code.
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
+
+// A typed answer as a call carries it: one space for each run of white space, none at either end. The guard reads the
+// answer so (answersIn) and the driver fills {text} so, so the call the driver runs is the call the guard allows.
+export const typedText = (answer: string): string => answer.replace(/\s+/g, ' ').trim()
 
 const DRIFT_CHOICE: Record<string, DriftChoice> = { 'Add to plan': 'add', Revert: 'revert', 'Allow once': 'allow-once' }
 
@@ -54,36 +70,34 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
   const r = answeredResult(result)
   if (r === null) return []
   const answers = r.answers as Record<string, unknown>
-  const notes = r.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}
   const out: Answer[] = []
   for (const raw of r.questions as unknown[]) {
     const q = (raw && typeof raw === 'object' ? raw : {}) as { header?: unknown; question?: unknown; multiSelect?: unknown }
     if (typeof q.question !== 'string' || typeof q.header !== 'string' || q.multiSelect === true) continue
     const answer = answers[q.question]
     if (typeof answer !== 'string' || answer === '') continue
-    const noteRow = notes[q.question]
-    const noted = noteRow && typeof noteRow === 'object' ? (noteRow as { notes?: unknown }).notes : undefined
-    const note = typeof noted === 'string' ? noted.trim() : ''
+    const note = noteOf(result, q.question)
 
     // The gate question, More options, Accept a finding: the chosen option, exactly. One that needs a reason counts with
     // the person's note; without one, it counts once the reason question is answered.
     for (const a of asks(view.ask, view.contextCheck?.ask ?? null)) {
-      if (!same(a.question, q.header, q.question)) continue
+      // WP16: a Scope drift question is read once, by the drift branch below (the write rule reads its choice)
+      if (!same(a.question, q.header, q.question) || a.question.header === view.drift.header) continue
       const option = a.options.find(o => o.label === answer)
       if (option === undefined || option.move === null) continue
       if ((option.reasonQuestion !== null || option.answerQuestion !== null) && note === '') continue
-      out.push({ kind: 'gate', stage: a.stage, question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: note })
+      out.push({ kind: 'gate', stage: a.stage, question: q.question, ask: view.ask?.question.question ?? q.question, questionId: a.id, option, reason: note })
     }
     // The Context check, answered by typing: the call the CLI wrote for a typed answer, filled with the text, quoted.
     const check = view.contextCheck
     if (check !== null && same(check.ask.question, q.header, q.question) && !check.ask.options.some(o => o.label === answer)) {
-      const text = answer.replace(/\s+/g, ' ').trim()
-      if (text !== '' && text.length <= 100 && answer !== CANCEL && check.answer !== '') {
+      const text = typedText(answer)
+      if (text !== '' && text.length <= MAX_ANSWER && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
-          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
+          id: null, kind: null, recommended: false, label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
           calls: [check.answer.replace("'{text}'", quote(text)), ...(check.ask.options[0]?.calls.slice(1) ?? [])],
         }
-        out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: '' })
+        out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, questionId: check.ask.id, option, reason: '' })
       }
     }
     // A name question (the person who confirms a manual task): the typed name is the answer, any but Cancel.
@@ -92,7 +106,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
         const nq: Question | null = option.answerQuestion
         // Any typed text but Cancel; an option of the name question itself ("Type it below") only says to type, and is no name.
         if (nq === null || !same(nq, q.header, q.question) || answer === CANCEL || nq.options.some(o => o.label === answer)) continue
-        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: answer })
+        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, questionId: a.id, option, reason: answer })
       }
     }
     // A reason question: any answer but Cancel is the reason, a typed one too.
@@ -100,7 +114,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       for (const option of a.options) {
         const rq: Question | null = option.reasonQuestion
         if (rq === null || !same(rq, q.header, q.question) || answer === CANCEL) continue
-        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: [answer, note].filter(t => t !== '').join(' ') })
+        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, questionId: a.id, option, reason: [answer, note].filter(t => t !== '').join(' ') })
       }
     }
     // Start over.

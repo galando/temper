@@ -1,0 +1,24 @@
+{
+  "task": "tenant-leak",
+  "arm": "vanilla",
+  "rep": 3,
+  "base": "77b362f07ba8569e19f40ff73bcb1f458bae4c7e",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": false,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.25599279999999996
+  },
+  "cost_usd": 0.256,
+  "cost_results": "sum",
+  "wall_s": 35,
+  "api_s": 32,
+  "turns": 7,
+  "sessions": 1,
+  "questions": 0,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": null
+}

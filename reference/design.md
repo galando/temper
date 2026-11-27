@@ -2,17 +2,13 @@
 description: "System design exploration for complex features (optional stage)"
 ---
 
-# Design: System Design Phase
+# Design: System Design Stage
 
-**Goal:** Produce system design artifacts for complex/medium features — skipped for
-simple/trivial. Active when `phases.design: true` AND complexity >= medium.
+**Goal:** Produce system design artifacts, when the person asked for Design at the plan approval (WP14).
 
-**Mode:** Design runs as a stage of `/temper` (also when `/temper:design` starts it: the
-command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
-return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
-(project `.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains
-`design`), plus the project's `.claude/packs/stacks/{detected-stack}.md` if present.
+**Mode:** Design runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
+return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the pack files your prompt lists
+on its `Packs:` line (the CLI chose those of Design).
 
 ## Step 1: Analyze the Plan
 
@@ -34,12 +30,11 @@ who owns the call. These are the points an analyst would have escalated — a hu
 resolves each one at the design gate, before Build spends anything on the wrong
 answer. Design flags; it never silently picks a side on a policy conflict.
 
-**A concern the person must decide becomes a question with ready answers (9.8.0).** Listing a concern at the gate let
-it pass unread: the person approved the list and the design stayed as it was. For each concern that needs a product
-or policy call (a cap, a role, what happens in an edge case), also add one line to intent.md's `### Open Questions`:
-`- Blocking: Design: {the concern as a concrete question} choices: {recommended} | {other} | {other}`. The CLI asks it
-before the Design question, the answer goes into intent.md's Decisions and into that concern's `resolved:` line, and
-the acceptance tests and Build read it there. A concern that is only a note for the builders stays a concern.
+**A concern the person must decide becomes a question with ready answers (9.8.0).** For a product or policy call
+(a cap, a role, an edge case) also add one line to intent.md's `### Open Questions`: `- Blocking: Design:
+{the concern as a concrete question} choices: {the answer the tasks assume} | {other}`. The CLI asks it before the
+Design question; the answer goes into Decisions and that concern's `resolved:` line. A concern that is only a note
+for the builders stays a concern.
 
 The section is **always present** — when nothing was flagged, write
 `None flagged — {one line on why}` rather than omitting it: an absent section is
@@ -67,7 +62,7 @@ open concerns means the human accepted them as written: leaving Design, the CLI 
 of its own (indented to the item's text under a list item concern), and the run
 commits `design.md`. Another call, typed at the question, is written into the
 concern's own `resolved: {what was decided}` line before the question is asked again.
-An armed run parks at a Design with open concerns, so the person decides them.
+A run that goes on by itself stops at a Design with open concerns, so the person decides them.
 
 The orchestrator asks the gate question exactly as `temper next --json` gives it (header
 `Temper gate`; on a pass: "Continue to Build (Recommended)", "Walk through step by step"
@@ -91,15 +86,17 @@ contract design (REST vs GraphQL, versioning), infrastructure/deployment changes
 security architecture (auth flow, encryption), external-system integration. **Not**
 styling/naming/code-organization/test-structure choices — those never get an ADR.
 
-For each qualifying decision, write the project's `docs/decisions/NNNN-{slug}.md` (`NNNN`
+For each qualifying decision, write its record into `design.md`, under a heading `## ADR NNNN-{slug}` (`NNNN`
 sequential, check existing ADRs for the next number starting at 0001; `{slug}` kebab-case:
-lowercase letters, digits and hyphens only, no `/`, no `..`) from
+lowercase letters, digits and hyphens only, no `/`, no `..`), with the fields of
 `${CLAUDE_PLUGIN_ROOT}/templates/adr.md` — Status (Proposed), Date, Context, Decision, Alternatives
-Considered, Consequences. Never delete an ADR; supersede it with a new one referencing
+Considered, Consequences. Write no file under `docs/decisions/`: before the approval a run writes only its spec
+folder (the hook and the mod refuse a project file), and the spec folder is committed when the run leaves Design.
+`docs/decisions/NNNN-{slug}.md` is then a change of the project like any other: a task of the plan writes it.
+Never delete an ADR; supersede it with a new one referencing
 `Supersedes: ADR-{NNNN}`. No qualifying decision → skip ADR generation entirely.
 
 ## Skip Conditions
 
-The CLI decides whether a run has a Design stage: it has one when the complexity is Medium or
-Complex and `phases.design` is not `false`, or when the spec folder already holds `design.md`.
-Otherwise the run goes from Plan straight to Build.
+A run has a Design stage only when the person chose `Run Design first` at the plan approval, or the spec folder
+already holds `design.md`. No tier and no risk adds it; otherwise the run goes from Plan to Build.

@@ -1,0 +1,352 @@
+"""approval.py: what the approval binds (9.8.5, WP12; ADR 0019 decision 4).
+
+The person approves the intent and the plan as the question showed them. The approving calls carry the digests of
+intent.md and tasks.md as they were when `temper next` built the question (`--shown intent.md=<H1> --shown
+tasks.md=<H2>`), and the CLI refuses them when a file changed since. The advance records `intent_hash` beside
+`plan_hash`, and `shown_hash` beside them (R2-3: what the card shows of the group titles, the task titles and the
+Cases lines, which the plan digest does not hold); a later change to either file fails the row `intent unchanged since
+the approval` of the Build, Check and commit gates until the person approves again.
+
+  python3 approval.py digest FILE              the digest of intent.md (or another spec text: rca.md) or of tasks.md
+  python3 approval.py bound FILE               what the approval records of intent.md: its digest, or absent
+  python3 approval.py row STATE SPEC           the row, one JSON line as the CLI's _req prints it
+  python3 approval.py bind-rca STATE           a fix run's approval: the digest of rca.md recorded as intent_hash
+  python3 approval.py check STATE SPEC NAME=DIGEST...
+                                               exit 1 with the reason when a named file of SPEC has another digest now
+  python3 approval.py plan-digest PARSED_JSON  the digest of a parsed tasks.md (the CLI's _plan_digest)
+  python3 approval.py tasks-digest PARSED_JSON the digest the approving calls carry for tasks.md (the plan beside what
+                                               the card shows of it)
+  python3 approval.py saved STATE              what a run saved by 9.8.4 or by the base binds once taken up (JSON)
+  python3 approval.py held STATE SPEC          exit 0 with the reason when the run is before its approval and no
+                                               approving answer passed its check at this step (rule 1, row D30: no
+                                               branch and no commit before the approval); exit 1 otherwise
+
+`check` records the digests it compared and the run's step as `approval_shown` in the state: the approving answer's
+first call (`state set run_mode M --shown ...`) passed, so its own `temper spec branch` and `temper spec commit` and the
+commit hook's carve out for the spec folder go on (scripts/spec_ops.py, gate_commit of the CLI), while the files are as
+it showed them. Any other branch or commit before the approval is refused.
+
+Standard library only. The one plan digest lives here: the CLI, the flow (Run.plan_core_digest) and plan_patch.py
+call it.
+"""
+import hashlib
+import json
+import os
+import re
+import sys
+
+# Run as `python3 -I` by the CLI, which leaves this folder off the path: put it back for tasks_md.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tasks_md  # noqa: E402
+
+ROW = "intent unchanged since the approval"
+# What the approval records for a run with no intent.md (the trivial path): the row then holds intent.md absent
+ABSENT = "absent"
+# The lines of intent.md the CLI writes itself (`temper intent accept`, `temper intent complete`, through
+# scripts/spec_text.py intent-status with the values cmd_intent of scripts/temper passes), in the forms it writes them:
+# no digest holds them. Only the first line of each form is the CLI's; other text on such a line, or a second line of a
+# form, is the person's and is bound. The Status line is also the line the CLI rewrites, so it takes the forms the
+# Intent gate reads as a status header (the word in any case, spaces around it), never any other text.
+OWN = (re.compile(r"^\*\*Status:\*\*\s*(?:draft|accepted|completed)\s*$", re.I),
+       re.compile(r"^\*\*Accepted-by:\*\* the person(?:, at the plan approval| at the Intent gate)$"),
+       re.compile(r"^\*\*Completed:\*\* \d{4}-\d{2}-\d{2}$"))
+
+
+def without_own(lines):
+    """The lines of intent.md without the CLI's own: the first line that matches each form of OWN is left out."""
+    left, kept = list(OWN), []
+    for l in lines:
+        hit = next((rx for rx in left if rx.match(l)), None)
+        if hit is None:
+            kept.append(l)
+        else:
+            left.remove(hit)
+    return kept
+
+
+def intent_digest(path):
+    """SHA 256 of the text of intent.md without the CLI's own lines; None when the file cannot be read."""
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            lines = f.read().split("\n")
+    except OSError:
+        return None
+    kept = "\n".join(without_own(lines))
+    return hashlib.sha256(kept.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def plan_digest(m, legacy=False):
+    """The digest of a parsed plan: each task's files, Depends and Test (and the text a manual Test asks the person to
+    confirm, which the approval card shows), each group's Depends, Validate, Interfaces, Context and tasks, and the
+    Integration line (every one of them when the plan has more than one). Titles, prose and checkbox ticks do not
+    count here, so the CLI's own tick is no change; what the card shows of them is bound beside it, by `tasks_digest`
+    (R2-3, RULES-7: a second recorded digest, so `plan_hash` stays what saved runs and the plan freshness check
+    compare). None when the plan does not parse.
+
+    WP32 (review findings R2b, R2c): the confirm text and a second Integration line are bound, each only where the plan
+    has it, so a plan without them keeps the digest 9.8.4 and the base recorded. legacy: the digest as those versions
+    computed it (state_ops.py migrate-legacy moves a saved plan_hash that matches it, through saved)."""
+    def n(p):
+        p = p.strip()
+        return p[2:] if p.startswith("./") else p
+    try:
+        tasks = []
+        for t in m["tasks"]:
+            core = {"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"],
+                    "test": t["test"]}
+            if t.get("confirm") and not legacy:
+                core["confirm"] = t["confirm"]
+            tasks.append(core)
+        core = {"tasks": tasks,
+                "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"],
+                            "interfaces": g["interfaces"], "context": g["context"], "tasks": g["tasks"]}
+                           for g in m["groups"]],
+                "integration": m["integration"]}
+        if len(m.get("integrations") or []) > 1 and not legacy:
+            core["integrations"] = list(m["integrations"])
+    except (KeyError, TypeError, AttributeError):
+        return None
+    return hashlib.sha256(json.dumps(core, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def tasks_digest(m):
+    """What the approving calls carry for tasks.md (R2-3, RULES-7): the plan's digest beside the text the question
+    shows and nothing else holds -- each group's title, each task's title and its Cases lines. An edit of one of those
+    changes it, as an edit of a File, Test or Validate line changes plan_hash; a tick the CLI writes itself, and other
+    prose, do not count. None when the plan does not parse."""
+    try:
+        shown = {"groups": [{"id": g["id"], "title": g.get("title") or ""} for g in m["groups"]],
+                 "tasks": [{"n": t["n"], "title": t.get("title") or "", "cases": [x for x in t.get("case_lines") or []]}
+                           for t in m["tasks"]]}
+    except (KeyError, TypeError, AttributeError):
+        return None
+    plan = plan_digest(m)
+    if not plan:
+        return None
+    return hashlib.sha256(json.dumps({"plan": plan, "shown": shown}, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def digest(path):
+    """The digest of a spec file by its name: tasks.md by its parsed plan beside what the card shows of it
+    (tasks_digest), any other (intent.md) by its text."""
+    if not os.path.isfile(path):
+        return None
+    if os.path.basename(path) == "tasks.md":
+        return tasks_digest(tasks_md.parse(path))
+    return intent_digest(path)
+
+
+def bound(path):
+    """What the approval records of intent.md: its digest, ABSENT when it is no regular file (the test of `gate intent`
+    for its trivial path, so a directory or a dangling link there is absent too), None when it cannot be read."""
+    return digest(path) if os.path.isfile(path) else ABSENT
+
+
+def read_state(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+MARK = "approval_shown"
+
+
+def write_state(path, st):
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def mark(state, pairs):
+    """Rule 1: the approving answer's digests passed at this step; recorded for held. Nothing without a run state."""
+    st = read_state(state)
+    if not st or not pairs:
+        return
+    m = st.get(MARK) if isinstance(st.get(MARK), dict) and st[MARK].get("step") == st.get("step") else {}
+    files = dict(m.get("files") or {}) if isinstance(m.get("files"), dict) else {}
+    files.update(p.split("=", 1) for p in pairs)
+    st[MARK] = {"step": st.get("step"), "files": files}
+    try:
+        write_state(state, st)
+    except OSError:
+        pass
+
+
+def held(state, spec):
+    """Rule 1 (row D30): the reason the run may make no branch and no commit now, or None. A /temper:temper run at
+    Intent or Plan, or a fix run at its root cause, is before its approval; the approving answer's first call marks the
+    step (mark), and the files it showed must still be as shown."""
+    st = read_state(state)
+    cmd, at = st.get("command") or "temper", st.get("next_stage")
+    if not ((cmd == "temper" and at in ("intent", "plan")) or (cmd == "fix" and at == "rca")):
+        return None
+    m = st.get(MARK)
+    if (isinstance(m, dict) and m.get("step") == st.get("step") and isinstance(m.get("files"), dict) and m["files"]
+            and all(digest(os.path.join(spec, n)) == d for n, d in m["files"].items())):
+        return None
+    return ("the run is at %s, before the approval: its branch and its first commit are made by the approving answer "
+            "of the person, never before it" % {"rca": "RCA"}.get(at, str(at).capitalize()))
+
+
+def row(name, ok, detail):
+    return {"name": name, "pass": ok, "detail": detail}
+
+
+def binding_row(state, spec):
+    """Pass when intent.md and tasks.md are as recorded: intent.md with the digest recorded, or still absent when the
+    approval recorded it absent, and tasks.md with plan_hash when one is recorded -- and, when the approval also
+    recorded `shown_hash` (R2-3: what the card shows of the titles and the Cases), with that too. A state with no
+    intent_hash key (a run saved before WP12) binds tasks.md alone (WP32, review finding R8-1: 9.8.4 and the base
+    record plan_hash at the approval), and passes with no plan_hash either. Else fail, naming the file that changed."""
+    st = read_state(state)
+    if "intent_hash" not in st and not st.get("plan_hash"):
+        return row(ROW, True, "no digest was recorded at the approval (a run saved before 9.8.5)")
+    # WP17: a fix run's approval binds rca.md, in the place of intent.md
+    text = "rca.md" if st.get("command") == "fix" else "intent.md"
+    want = {text: st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
+    changed = []
+    if "intent_hash" not in st:
+        pass
+    elif want[text] == ABSENT:
+        if os.path.isfile(os.path.join(spec, text)):
+            changed.append(text)
+    elif digest(os.path.join(spec, text)) != want[text]:
+        changed.append(text)
+    tasks = os.path.join(spec, "tasks.md")
+    if want["tasks.md"] and (plan_digest(tasks_md.parse(tasks)) if os.path.isfile(tasks) else None) != want["tasks.md"]:
+        changed.append("tasks.md")
+    # R2-3: what the card shows of the titles and the Cases is bound beside the plan, where the approval recorded it
+    if st.get("shown_hash") and digest(tasks) != st.get("shown_hash"):
+        changed.append("tasks.md")
+    if not changed:
+        return row(ROW, True, "the plan is as the person approved it (a run saved before 9.8.5 recorded no digest of "
+                   "the intent)" if "intent_hash" not in st else "rca.md is as the person approved it" if text == "rca.md"
+                   else "the intent and the plan are as the person approved them")
+    return row("intent unchanged since the approval", False,
+               "%s changed since the approval; %s, or restore %s"
+               % (" and ".join(changed), "start the fix again" if text == "rca.md" else "step back to Plan and approve again",
+                  "them" if len(changed) > 1 else "it"))
+
+
+def saved(state):
+    """WP32: a run saved by 9.8.4 or by the base, taken up once (state_ops.py migrate-legacy prints nothing of it; it
+    merges what this returns). Past its approval it binds intent.md as found (rca.md for a fix run past its root cause
+    question), since those versions recorded no digest of it (review finding R8-1): a change made after the upgrade
+    fails the row as for a run of this version. Its plan_hash is the digest those versions computed; where the plan
+    holds what this version binds besides (the text a manual Test asks the person to confirm, a second Integration
+    line), the saved digest of the plan as it is now moves to this version's digest, in groups.json too, so the
+    approval still binds the plan it approved and only a later change fails the gates (row D60). The keys to set:
+    intent_hash, plan_hash, or none."""
+    st, out = read_state(state), {}
+    h, spec = st.get("plan_hash"), st.get("spec_path")
+    if not isinstance(spec, str) or not spec:
+        return out
+    root = os.path.dirname(os.path.dirname(os.path.abspath(state)))
+    sp = spec if os.path.isabs(spec) else os.path.join(root, spec)
+    # a fix run past its root cause question binds rca.md, in the place of intent.md (bind_rca)
+    cmd = st.get("command") or "temper"
+    past = {"temper": (None, "", "intent", "plan"), "fix": (None, "", "rca")}.get(cmd)
+    if past and st.get("next_stage") not in past and "intent_hash" not in st:
+        b = bound(os.path.join(sp, "rca.md" if cmd == "fix" else "intent.md"))
+        if b:
+            out["intent_hash"] = b
+    tasks = os.path.join(sp, "tasks.md")
+    if not h or not os.path.isfile(tasks):
+        return out
+    m = tasks_md.parse(tasks)
+    new = plan_digest(m)
+    if not new or new == h or plan_digest(m, legacy=True) != h:
+        return out
+    out["plan_hash"] = new
+    # R2-3: the taken-up run binds what the card shows of the titles and the Cases as it is found, as it binds the
+    # intent as found (R8-1); a later change fails the row as for a run of this version
+    c = tasks_digest(m)
+    if c:
+        out["shown_hash"] = c
+    gp = os.path.join(os.path.dirname(os.path.abspath(state)), "groups.json")
+    g = read_state(gp)
+    if g.get("plan_hash") == h:
+        g["plan_hash"] = new
+        try:
+            write_state(gp, g)
+        except OSError:
+            pass
+    return out
+
+
+def bind_rca(state):
+    """WP17: the approval of a fix run (`state advance rca_complete fix`) records the digest of rca.md as the person
+    approved it, as intent_hash: the row then names rca.md in the place of intent.md."""
+    st = read_state(state)
+    if st.get("command") != "fix":
+        return 0
+    st["intent_hash"] = bound(os.path.join(str(st.get("spec_path") or ""), "rca.md"))
+    write_state(state, st)
+    return 0
+
+
+def check(spec, pairs):
+    """The reason a shown digest differs from the file now, or None. A pair is NAME=DIGEST, NAME a file of the spec."""
+    for p in pairs:
+        name, sep, want = p.partition("=")
+        if not sep or not name or "/" in name or name.startswith("."):
+            return "--shown takes NAME=DIGEST, NAME a file of the spec folder; got '%s'" % p
+        if digest(os.path.join(spec, name)) != want:
+            return "%s changed since the question was shown; ask again" % name
+    return None
+
+
+def main(argv):
+    word = argv[1] if len(argv) > 1 else ""
+    if word == "digest" and len(argv) == 3:
+        d = digest(argv[2])
+        if d:
+            print(d)
+        return 0 if d else 1
+    if word == "bound" and len(argv) == 3:
+        d = bound(argv[2])
+        if d:
+            print(d)
+        return 0 if d else 1
+    if word == "plan-digest" and len(argv) == 3:
+        d = plan_digest(json.loads(argv[2]))
+        if d:
+            print(d)
+        return 0 if d else 1
+    if word == "tasks-digest" and len(argv) == 3:
+        d = tasks_digest(json.loads(argv[2]))
+        if d:
+            print(d)
+        return 0 if d else 1
+    if word == "saved" and len(argv) == 3:
+        print(json.dumps(saved(argv[2])))
+        return 0
+    if word == "bind-rca" and len(argv) == 3:
+        return bind_rca(argv[2])
+    if word == "row" and len(argv) == 4:
+        print(json.dumps(binding_row(argv[2], argv[3])))
+        return 0
+    if word == "check" and len(argv) >= 4:
+        why = check(argv[3], argv[4:])
+        if why:
+            print("FAIL: %s" % why, file=sys.stderr)
+            return 1
+        mark(argv[2], argv[4:])
+        return 0
+    if word == "held" and len(argv) == 4:
+        why = held(argv[2], argv[3])
+        if why:
+            print(why)
+        return 0 if why else 1
+    print("usage: approval.py digest FILE | bound FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... "
+          "| plan-digest JSON | tasks-digest JSON | bind-rca STATE | held STATE SPEC | saved STATE", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

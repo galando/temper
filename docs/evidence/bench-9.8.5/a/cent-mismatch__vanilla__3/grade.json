@@ -1,0 +1,57 @@
+{
+  "task": "cent-mismatch",
+  "arm": "vanilla",
+  "rep": 3,
+  "hidden_pass": 4,
+  "hidden_total": 4,
+  "hidden_rate": 1.0,
+  "hidden_all": true,
+  "hidden": {
+    "bench_hidden.test_acceptance.Mismatch.test_app_keeps_per_line_tax": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_credit_note_matches_app": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_export_matches_app": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_payment_matches_app": "pass"
+  },
+  "suite_ok": true,
+  "suite": {
+    "bench_suite.test_invoices.InvoiceTest.test_credit_note_full_amount": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_export": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_idempotent_replay": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_issue_sets_dates_in_tenant_timezone": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_other_tenant_is_404": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_pay_in_full": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_tax_per_line_half_even": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_viewer_cannot_write": "pass"
+  },
+  "code_files": 5,
+  "code_lines": 44,
+  "tool_files": 0,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": "ledger/amounts.py",
+      "added": 0,
+      "removed": 18
+    },
+    {
+      "path": "ledger/credit_notes.py",
+      "added": 2,
+      "removed": 2
+    },
+    {
+      "path": "ledger/export.py",
+      "added": 3,
+      "removed": 3
+    },
+    {
+      "path": "ledger/payments.py",
+      "added": 2,
+      "removed": 2
+    },
+    {
+      "path": "unit/test_invoices.py",
+      "added": 12,
+      "removed": 0
+    }
+  ]
+}

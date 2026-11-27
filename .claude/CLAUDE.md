@@ -3,66 +3,74 @@
 | Command | Purpose |
 |---------|---------|
 | `/temper` | Unified SDLC: intent → plan → design → build → review → check |
-| `/temper:intent` | Capture an idea as a draft `intent.md` (build later) |
-| `/temper:plan` | Plan with blast radius (a door into `/temper`) |
-| `/temper:design` | System design, complex/medium features (a door into `/temper`) |
-| `/temper:build` | TDD + quality gates (a door into `/temper`) |
-| `/temper:review` | Confidence-scored review (a door into `/temper`) |
-| `/temper:check` | Stack validation (a door into `/temper`) |
 | `/temper:fix` | RCA + fix |
-| `/temper:pack` | Manage quality packs |
-| `/temper:status` | Quality + observability dashboard |
-| `/temper:init` | Seed a project's `.claude/temper.config` (idempotent) |
 
-**Autonomous Build (opt-in):** after approving the plan, `/temper` can run Build
-unattended; Review, Check and the commit keep their questions. Armed at the last question
-before Build (never at invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
-every gate is the ordinary interactive one. Config: `.claude/temper.config` → `autonomy:`.
+Words of `/temper:temper`: `draft <idea>` (a draft `intent.md`, no run), and alone `status`, `report`, `init`,
+`pack`; other text is a request. Each word has its row in the Arguments table of `commands/temper.md`.
+
+**The run to the commit (default):** the approval's first option, Approve and build, lets the run go
+on by itself to the commit question: a passed check moves on, a failed check gets one repair by rule, every other case
+stops and asks. Started only by that answer (never at invocation); never pushes or merges; the commit always asks.
+`run.default` (`to-commit`, `ask`, `never-unattended`) orders the options; a config that turns autonomy off
+(`autonomy.enabled` set to false) reads as `ask`.
+See `reference/autonomy.md`.
 
 **The deterministic spine (v7):** every gate verdict is computed by `scripts/temper`
 (`temper gate {stage}`) from an evidence ledger (`temper evidence add`), not asserted by
 a model. `git commit` is blocked by a native pre-commit hook (and, with the guardrails pack,
 an in-agent PreToolUse hook) whenever a gate is FAIL and unoverridden: see `packs/guardrails/rules.md`.
 
-**One flow (ADR 0012, ADR 0013).** `temper next --json` (`scripts/flow.py`) says what comes next,
-with each gate's exact question and options; `commands/temper.md` is a loop over it. The CLI writes
-`.temper/view.json` after every change, the one file of the CLI's the mod reads. The person decides
-each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
+**One flow (ADR 0012, ADR 0013).** `temper next --json` (`scripts/flow.py` and its `flow_*.py` modules)
+says what comes next, with each gate's exact question and options; `commands/temper.md` is a loop
+over it. The CLI writes `.temper/view.json` after every change, the one file of the CLI's the mod reads.
+The person decides each gate only in the `Temper gate` question, with the mod or without it, in every mode
+(after Approve and build, only at the stops and the commit); the mod
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
 bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
 `hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands
-the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`). The stage commands above are
-doors into `/temper`.
+the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`).
 
-**Version:** 9.8.4 (history: `CHANGELOG.md`).
+**Version:** 9.8.5 (history: `CHANGELOG.md`).
 Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 
 **Developing temper (this repo):**
-- Test: `bash scripts/selftest/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
-  `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
-- Faster: `bash scripts/selftest/run-selftest.sh [--fast|--changed|--slow]` runs the case files in parallel; `bun scripts/e2e/run.ts both`
-  is the end to end driver (the real CLI, with the mod's rule engine and without it).
+- Test: `bash scripts/verify.sh quick` after a change (about 3 minutes, ends `verify quick: PASS`), and
+  `bash scripts/verify.sh full` before a push (every case file, the end to end suite in every mode, the mod).
+- Selftest: `bash scripts/selftest/run-selftest.sh [--fast|--changed|--touched|--slow] [--shard K/N] [--list]` runs
+  the case files in parallel; a case file is found by its name (`temper-cases-N.sh`), so a new one needs no list.
+  `bun scripts/e2e/run.ts both` is the end to end driver (the real CLI, with the mod's rule engine and without it).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
 - The mod (pure rules, wiring, drawing) and its test suite: after any change to them run
   `claude plugin test .`, `tsc -p tsconfig.mod.json` (TypeScript 5.6, as CI runs it) and
   `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
-  `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
-  spine — gate logic lives HERE, never in a prompt) · `scripts/guards/` ·
+  `reference/` (methodology) · `packs/` (rules) · `scripts/temper` and its Python modules
+  (`json_ops.py`, `state_ops.py`, `ledger_ops.py`, `spec_text.py`, `commit_rows.py`, `report_ops.py`,
+  `groups_ops.py`, run as `python3 -I`): the deterministic spine, the CLI; gate logic lives
+  in the CLI (the script and its Python modules), never in a prompt · `scripts/guards/` ·
   `scripts/plan_review.py` (renders and merges the HTML plan review).
-- Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
-  `test-temper.sh` case, not a prompt edit; what comes next, a gate's options and the grouped
-  Build loop are `scripts/flow.py` (a case in `temper-cases-8.sh`; regenerate
-  `scripts/selftest/view-fixtures.ts` with `make-view-fixtures.sh` when the view changes), never
-  a list in a page; hooks must fail OPEN except their one
+- Known mistakes: a gate-mechanics change is an edit of the CLI (`scripts/temper` or its module) plus a
+  `test-temper.sh` case, not a prompt edit; new CLI logic goes into a module and one line into the bash
+  file; what comes next, a gate's options and the grouped Build loop are `scripts/flow.py` and its
+  `flow_*.py` modules (a case in `temper-cases-8.sh`; regenerate `scripts/selftest/view-fixtures.ts`
+  with `make-view-fixtures.sh` when the view changes), never a list in a page; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or
   `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
   stage's return box: a brief must never point a clean-context subprocess at an
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
-  the person decides only in a question dialog, so never add a button that decides to the
-  mod, and never give a stage command a flow of its own (it is a door into `/temper`).
+  a finding is resolved by `temper repair close` (scripts/repair_ops.py), never by a brief or an agent's
+  call; the person decides only in a question dialog, so never add a button that decides to the
+  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`,
+  with a page in `reference/`);
+  before a fault adds a row, a question, a key or an agent, show that the failing step cannot be removed or merged;
+  a cap of `scripts/caps.json` is raised only in a pull request of its own, never by a building session (`now`
+  follows the measure, `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
+  commit that moves the behaviour (`bun scripts/e2e/run.ts all <name> --floor scripts/e2e/floor.json`);
+  a check is taken off the expected to fail list (`scripts/selftest/expected-fail.txt`) by the
+  commit that makes it pass and by no other, and its assertion is never weakened to get there
+  (`python3 scripts/check_done.py`; a changed assertion goes into `docs/plans/one-go/changed-tests.md`).
 
 <!-- Nothing follows. Do not add a generated advice section here: validate-docs.sh
      rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).

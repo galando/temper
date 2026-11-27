@@ -1,6 +1,6 @@
 # ADR-0003: Remove the Eval stage from the /temper pipeline
 
-**Status:** Proposed
+**Status:** Accepted (shipped in 8.0.0)
 **Date:** 2026-07-31
 **Supersedes:** (none)
 

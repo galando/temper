@@ -155,6 +155,36 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- The growth caps (9.8.5): each `now` of scripts/caps.json equals its measure, and no `final` was raised ---
+if caps_out="$(python3 -I "$REPO_ROOT/scripts/check_caps.py" 2>&1)"; then
+  echo "[PASS] Growth caps (scripts/check_caps.py): ${caps_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Growth caps (scripts/check_caps.py):"
+  printf '%s\n' "$caps_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
+# --- Every key of the config has a reader, and no agent is sent to the config (9.8.5, WP29) ---
+if keys_out="$(python3 -B "$REPO_ROOT/scripts/check_config_keys.py" 2>&1)"; then
+  echo "[PASS] Config keys (scripts/check_config_keys.py): ${keys_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Config keys (scripts/check_config_keys.py):"
+  printf '%s\n' "$keys_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
+# --- The words a user learns, and no retired word in a text a user reads (9.8.5, WP31) ---
+if words_out="$(python3 -I "$REPO_ROOT/scripts/check_words.py" 2>&1)"; then
+  echo "[PASS] Words (scripts/check_words.py): ${words_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Words (scripts/check_words.py):"
+  printf '%s\n' "$words_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

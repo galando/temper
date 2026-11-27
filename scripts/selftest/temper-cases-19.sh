@@ -9,37 +9,37 @@ _mk() { python3 -c "import json,sys; print(json.load(open('.temper/pending-stage
 _stop() { echo "$1" | bash "$VERIFY" >/dev/null 2>&1; }
 _gone() { [[ -f .temper/pending-stage.json ]] && echo present || echo absent; }
 
-# D1: /temper:intent again in the same session, while the debt is unpaid, keeps the refusals already counted;
+# D1: /temper:temper draft again in the same session, while the debt is unpaid, keeps the refusals already counted;
 # otherwise each new prompt would give the loop guard a fresh budget.
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:intent x", "session_id": "s-one"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x", "session_id": "s-one"}' | bash "$MARKER"
 _stop '{"session_id": "s-one"}'
-echo '{"prompt": "/temper:intent x again", "session_id": "s-one"}' | bash "$MARKER"
-assert_eq "D1: the same session's /temper:intent again keeps the refusals already counted" "1" "$(_mk blocks)"
+echo '{"prompt": "/temper:temper draft x again", "session_id": "s-one"}' | bash "$MARKER"
+assert_eq "D1: the same session's /temper:temper draft again keeps the refusals already counted" "1" "$(_mk blocks)"
 _stop '{"session_id": "s-one"}'
 assert_exit "D1: so the loop guard still opens after two refusals in all" 0 bash -c "echo '{\"session_id\": \"s-one\"}' | bash '$VERIFY'"
-# A new session's /temper:intent starts its own count.
-echo '{"prompt": "/temper:intent x", "session_id": "s-one"}' | bash "$MARKER"
+# A new session's /temper:temper draft starts its own count.
+echo '{"prompt": "/temper:temper draft x", "session_id": "s-one"}' | bash "$MARKER"
 _stop '{"session_id": "s-one"}'
-echo '{"prompt": "/temper:intent y", "session_id": "s-two"}' | bash "$MARKER"
-assert_eq "D1: another session's /temper:intent starts a count of its own, and the marker names that session" "0|s-two" "$(_mk blocks)|$(_mk session_id)"
+echo '{"prompt": "/temper:temper draft y", "session_id": "s-two"}' | bash "$MARKER"
+assert_eq "D1: another session's /temper:temper draft starts a count of its own, and the marker names that session" "0|s-two" "$(_mk blocks)|$(_mk session_id)"
 
 # D2: the marker names the session that owes the gate; another session's Stop neither blocks on it nor removes it.
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:intent x", "session_id": "s-crashed"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x", "session_id": "s-crashed"}' | bash "$MARKER"
 assert_eq "D2: the marker records the session id from the hook's input" "s-crashed" "$(_mk session_id)"
 assert_exit "D2: another session's Stop is not blocked by that marker" 0 bash -c "echo '{\"session_id\": \"s-other\"}' | bash '$VERIFY'"
 assert_eq "D2: and leaves it as it was (the session that owes it may still be running)" "s-crashed|0" "$(_mk session_id)|$(_mk blocks)"
 assert_exit "D2: the session that owes the gate is still blocked" 2 bash -c "echo '{\"session_id\": \"s-crashed\"}' | bash '$VERIFY'"
 # A session id with a quote in it is kept as JSON text: the marker stays readable.
 rm -f .temper/pending-stage.json
-printf '%s' '{"prompt": "/temper:intent x", "session_id": "a\"b"}' | bash "$MARKER"
+printf '%s' '{"prompt": "/temper:temper draft x", "session_id": "a\"b"}' | bash "$MARKER"
 assert_eq "D2: a session id with a quote is written as JSON text" 'a"b' "$(_mk session_id)"
 # Old markers (no session id) and a harness input without one are judged as before.
 echo '{"stage": "intent", "blocks": 0}' > .temper/pending-stage.json
 assert_exit "D2: a marker with no session id still blocks any session" 2 bash -c "echo '{\"session_id\": \"s-any\"}' | bash '$VERIFY'"
 rm -f .temper/pending-stage.json
-echo '{"prompt": "/temper:intent x", "session_id": "s-one"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x", "session_id": "s-one"}' | bash "$MARKER"
 assert_exit "D2: a Stop whose input has no session id is judged as before" 2 bash -c "echo '{}' | bash '$VERIFY'"
 # A marker older than a day is a crashed session's leftover: fail open, and clear it.
 echo '{"stage": "intent", "blocks": 0, "since": "2020-01-01T00:00:00Z"}' > .temper/pending-stage.json
@@ -53,7 +53,7 @@ assert_exit "D2: a since that is not a time is not read as old (blocks as before
 
 # D3: stop_hook_active with our counter at 0 (another Stop hook blocked first) opens this stop but keeps the debt.
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:intent x", "session_id": "s-one"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x", "session_id": "s-one"}' | bash "$MARKER"
 assert_exit "D3: stop_hook_active with the counter at 0 still fails open" 0 \
   bash -c "echo '{\"stop_hook_active\": true, \"session_id\": \"s-one\"}' | bash '$VERIFY'"
 assert_eq "D3: but the marker stays, so the next Stop of the session still asks for the gate" "intent|0" "$(_mk stage)|$(_mk blocks)"
@@ -83,12 +83,12 @@ rm -rf "$WORKDIR/.git/d4-bin"
 # state clear and state init both remove build-state.json, and a new run's state holds no regression_test.
 setup
 PRT="$REPO_ROOT/scripts/guards/protect-regression-test.sh"
-"$TEMPER" state init bug1 --command fix >/dev/null 2>&1
+"$TEMPER" state init bug1 --command fix >/dev/null 2>&1; _base_known
 mkdir -p spec && echo "exit 1" > spec/bug1.test.sh   # the CLI records only a test file that exists (A6)
 "$TEMPER" state set regression_test spec/bug1.test.sh >/dev/null 2>&1
 _prt() { echo '{"tool_input": {"file_path": "spec/bug1.test.sh"}}' | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$PRT" >/dev/null 2>&1; echo $?; }
 assert_eq "D6: during the fix run the recorded test is shielded" "2" "$(_prt)"
-"$TEMPER" state init bug2 --command fix >/dev/null 2>&1
+"$TEMPER" state init bug2 --command fix >/dev/null 2>&1; _base_known
 assert_eq "D6: a new fix run does not inherit the shield of the one before" "0|" "$(_prt)|$("$TEMPER" state get regression_test 2>/dev/null)"
 mkdir -p spec && echo "exit 1" > spec/bug1.test.sh   # the CLI records only a test file that exists (A6)
 "$TEMPER" state set regression_test spec/bug1.test.sh >/dev/null 2>&1
@@ -100,7 +100,7 @@ assert_eq "D6: a cleared run is no run: no build-state.json, and the shield is l
 # Check passed is check_complete; the one stage after it, Commit (commit_complete, before Pipeline), is past Check too,
 # so a Pipeline fix round's commit is not refused. A stage before Check still is.
 setup
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 _vtr_at() { python3 -c "
 import json, sys
 p = '.temper/build-state.json'; d = json.load(open(p)); d['stage'] = sys.argv[1]; json.dump(d, open(p, 'w'))" "$1"; }

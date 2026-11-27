@@ -9,6 +9,17 @@
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh cost [N]   what the fresh review costs: the same session from Plan to the plan
 #                                                               question with plan.fresh-review off and always, N times each
 #                                                               (default 1), with the time and the cost Claude Code reports
+#   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh approval   a run with a real model up to the approval, with the mod and without it
+#
+# The approval check (9.8.5, WP32; done.md row D109). A scratch project outside the repository: a small Python service with a
+# passing suite, its config, the .temper scaffold of `temper init` and one commit, and no run started. One headless session with
+# the plugin and one clear request (the file, the function, its exact behaviour and where its tests go), with the permissions
+# and the limit of the fresh check. The session cannot answer a dialog, so it ends at the approval. It passes when
+# .temper/asked.json holds one question and its id is plan.approve, .temper/view.json holds a card of the kind approval, the spec
+# folder holds intent.md and tasks.md, and the project is as rule 1 wants it before the approval: the branch and the count of
+# commits as at the start, and git status names nothing outside .temper/ and the baseline worktree. It runs with the mod and
+# without it, and both legs must end in that state. It proves the front half only: Intent, Plan, the approval card and rule 1.
+# The older checks start, fresh and cost are not part of this proof: they were written for the plan question of the base.
 #
 # The fresh review check (9.7.6). A scratch Python project gets an accepted intent for a medium change (limit failed logins), with
 # the run already at Plan: a headless session cannot answer the Intent question. Then `claude -p "/temper:temper"` takes the run
@@ -32,11 +43,94 @@ HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN="${HERE%/scripts/e2e}"
 TEMPER="$PLUGIN/scripts/temper"
 WHAT="${1:-all}"
-case "$WHAT" in all|start|fresh|cost) ;; *) echo "FAIL: usage: live-smoke.sh [all|start|fresh|cost [N]]" >&2; exit 2 ;; esac
+case "$WHAT" in all|start|fresh|cost|approval) ;; *) echo "FAIL: usage: live-smoke.sh [all|start|fresh|approval|cost [N]]" >&2; exit 2 ;; esac
 SCRATCH="$(mktemp -d)"
 trap 'rm -rf "$SCRATCH"' EXIT
 FAILED=0
 fail() { echo "FAIL: $*"; FAILED=1; }
+
+# ---- the approval check: a run with a real model up to the approval (9.8.5, WP32) ----
+seed_approval() { # seed_approval <folder>: a small Python service with a passing suite, its config, temper init, one commit
+  local d="$1"
+  mkdir -p "$d/src" "$d/unit" "$d/.claude"
+  cd "$d" || return 1
+  git init -q . && git checkout -q -B main
+  : > src/__init__.py; : > unit/__init__.py
+  printf 'def login(request):\n    return {"status": 200} if request.get("password") == "secret" else {"status": 401}\n' > src/auth.py
+  printf 'import unittest\n\nfrom src import auth\n\n\nclass LoginTest(unittest.TestCase):\n    def test_right_password(self):\n        self.assertEqual(auth.login({"password": "secret"})["status"], 200)\n\n    def test_wrong_password(self):\n        self.assertEqual(auth.login({"password": "nope"})["status"], 401)\n' > unit/test_auth.py
+  printf '__pycache__/\n' > .gitignore
+  cp "$PLUGIN/templates/temper.config.default" .claude/temper.config
+  python3 -m unittest discover -s unit -t . >/dev/null 2>&1 || { echo "the seed suite does not pass"; return 1; }
+  "$TEMPER" init >/dev/null 2>&1 || true
+  git add -A && git -c user.email=e2e@example.com -c user.name=e2e commit -qm base
+}
+REQUEST='Add a function is_valid_username(name) to src/auth.py. It returns True when name is a str of 3 to 20 characters, each a lowercase letter a to z, a digit or an underscore, and False for anything else, None included. It raises nothing. Put its tests in unit/test_username.py, written with unittest. Change no other file of src.'
+approval_leg() { # approval_leg <name> [claude flags...]: seed, one headless session, print one outcome line "name|ok|..." last
+  local name="$1"; shift
+  local d="$SCRATCH/approval-$name"
+  if ! (seed_approval "$d") >"$SCRATCH/approval-$name-seed.log" 2>&1; then
+    cat "$SCRATCH/approval-$name-seed.log"; fail "approval $name: the seed did not end in one commit"; echo "$name|seed"; return
+  fi
+  local branch commits out rc
+  branch="$(git -C "$d" rev-parse --abbrev-ref HEAD)"; commits="$(git -C "$d" rev-list --count HEAD)"
+  out="$(cd "$d" && timeout 1800 claude -p "/temper:temper \"$REQUEST\"" --plugin-dir "$PLUGIN" --permission-mode acceptEdits \
+    --allowedTools Bash Read Write Edit Glob Grep Agent "$@" 2>&1)"; rc=$?
+  echo "$out" | tail -15 | sed "s/^/  [approval $name] /"
+  # The mod leg proves nothing when Claude Code did not load the mod (it says so): fail it, never pass it.
+  if [[ "$name" == "mod" ]] && grep -q 'hooks module not loaded' <<<"$out"; then
+    fail "approval mod: Claude Code did not load the mod in this process: $(grep -m1 'hooks module not loaded' <<<"$out" | cut -c1-200)"
+  fi
+  (cd "$d" && python3 -I - "$name" "$rc" "$branch" "$commits" <<'PY'
+import json, os, subprocess, sys
+name, rc, branch, commits = sys.argv[1:5]
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except (OSError, ValueError):
+        return default
+def git(*a):
+    return subprocess.run(["git"] + list(a), capture_output=True, text=True).stdout
+bad = []
+asked = load(".temper/asked.json", {})
+ids = [k.split(":", 2)[2].rsplit(":", 1)[0] if k.count(":") >= 3 else k.split(":", 2)[-1] for k in (asked if isinstance(asked, dict) else {})]
+if ids != ["plan.approve"]:
+    bad.append("asked.json holds %s, not the one question plan.approve (claude exited %s)" % (ids or "no question", rc))
+card = (load(".temper/view.json", {}) or {}).get("card") or {}
+if card.get("kind") != "approval":
+    bad.append("view.json holds no card of the kind approval (%s)" % (card.get("kind") or "no card"))
+spec = (load(".temper/build-state.json", {}) or {}).get("spec_path") or ""
+for f in ("intent.md", "tasks.md"):
+    if not spec or not os.path.isfile(os.path.join(spec, f)):
+        bad.append("the spec folder %s holds no %s" % (spec or "(none)", f))
+now_branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+now_commits = git("rev-list", "--count", "HEAD").strip()
+if (now_branch, now_commits) != (branch, commits):
+    bad.append("rule 1: the branch and the commits moved (%s, %s commits; at the start %s, %s)" % (now_branch, now_commits, branch, commits))
+outside = [l[3:] for l in git("status", "--porcelain", "--untracked-files=all").splitlines()
+           if l[3:] and not l[3:].startswith(".temper/") and not l[3:].startswith(".claude/worktrees/temper-baseline")]
+if outside:
+    bad.append("rule 1: files outside .temper/ changed before the approval: %s" % ", ".join(outside[:8]))
+for b in bad:
+    print("FAIL: approval %s: %s" % (name, b))
+print("  [approval %s] questions: %s; card: %s; spec: %s" % (name, ",".join(ids) or "none", card.get("kind") or "none", spec or "none"))
+print("%s|%s|%s" % (name, "ok" if not bad else "bad", ",".join(ids)))
+PY
+  )
+}
+if [[ "$WHAT" == "approval" ]]; then
+  echo "--- the approval check, with the mod ---"
+  A="$(approval_leg mod)"; echo "$A" | sed '$d'
+  echo "--- the approval check, without the mod (disableAllHooks) ---"
+  B="$(approval_leg plain --settings '{"disableAllHooks": true}')"; echo "$B" | sed '$d'
+  grep -q '^FAIL' <<<"$A$B" && FAILED=1
+  a="$(tail -1 <<<"$A")"; b="$(tail -1 <<<"$B")"
+  if [[ "${a#*|}" == "ok|"* && "${a#*|}" == "${b#*|}" && "$FAILED" -eq 0 ]]; then
+    echo "OK: approval: with the mod and without it a real run stopped at the approval with no question before it and no project file, branch or commit (the front half only)"
+  else
+    fail "approval: the two legs did not both end at the approval (mod: ${a#*|}; without: ${b#*|})"
+  fi
+  exit "$FAILED"
+fi
 
 # ---- the start check: a run starts ----
 if [[ "$WHAT" == "all" || "$WHAT" == "start" ]]; then

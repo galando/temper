@@ -1,0 +1,98 @@
+{
+  "task": "ts-seat-holds",
+  "arm": "temper",
+  "rep": 3,
+  "hidden_pass": 11,
+  "hidden_total": 11,
+  "hidden_rate": 1.0,
+  "hidden_all": true,
+  "hidden": {
+    "a hold has the shape and lasts ten minutes": "pass",
+    "held seats are not available": "pass",
+    "book and another user refuse held seats": "pass",
+    "seat count and unknown seats": "pass",
+    "holding again replaces the earlier hold and releases its seats": "pass",
+    "one hold per user per event, not per user": "pass",
+    "confirm sells the seats with the booking shape": "pass",
+    "an expired hold cannot be confirmed and frees its seats at once": "pass",
+    "an unknown hold": "pass",
+    "one audit entry per change, none for a refused call": "pass",
+    "a returned hold is a copy": "pass"
+  },
+  "suite_ok": true,
+  "suite": {
+    "booking sells the seats": "pass",
+    "a sold seat cannot be booked again": "pass"
+  },
+  "code_files": 7,
+  "code_lines": 209,
+  "tool_files": 6,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/acceptance/holds.acceptance.test.ts",
+      "added": 234,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/gate-ledger.json",
+      "added": 548,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/intent.md",
+      "added": 154,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/plan.md",
+      "added": 18,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/report.html",
+      "added": 13,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/seat-holds-so-customer-can/tasks.md",
+      "added": 49,
+      "removed": 0
+    },
+    {
+      "path": "src/bookings.ts",
+      "added": 2,
+      "removed": 2
+    },
+    {
+      "path": "src/errors.ts",
+      "added": 1,
+      "removed": 1
+    },
+    {
+      "path": "src/events.ts",
+      "added": 9,
+      "removed": 2
+    },
+    {
+      "path": "src/holds.ts",
+      "added": 30,
+      "removed": 0
+    },
+    {
+      "path": "src/store.ts",
+      "added": 3,
+      "removed": 0
+    },
+    {
+      "path": "test/availability.ts",
+      "added": 61,
+      "removed": 0
+    },
+    {
+      "path": "test/holds.ts",
+      "added": 98,
+      "removed": 0
+    }
+  ]
+}

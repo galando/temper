@@ -38,9 +38,13 @@ need MOD "can only hide a question" "an injected marker copy can only hide a que
 need MOD "goes to the native \`pre-commit\` hook in every stage" "a plain commit is for the native hook, in every stage"
 need MOD "Claude writes the question" "a decision is the option the person picks in a question Claude writes"
 need MOD "PowerShell" "MCP and PowerShell file tools are not checked"
+need TRUST "a shell command that writes a file are outside it" "a /temper:fix run and a shell command that writes a file are outside the write hook"
 need TRUST "gates the run's branch only" "the commit hook gates the run's branch only"
 need MOD "the gate is branch scoped" "a commit on another branch passes the hook (the gate is branch scoped)"
 need TRUST "temper guards uninstall" "after a plugin is disabled, run temper guards uninstall"
 need TRUST "reads no settings file" "Temper reads no settings file to find out that a plugin is disabled"
+need TRUST "pushes only after the person chose a pull request option at the commit question" "Temper pushes only after the person chose a pull request option at the commit question"
+need MOD "only from the option you pick at the approval" "a run goes on by itself only from the person's option at the approval"
+need TRUST "that a person, not the model, picked an option" "with the mod off only the page's rule holds that a person, not the model, picked an option"
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

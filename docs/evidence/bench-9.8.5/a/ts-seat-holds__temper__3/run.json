@@ -1,0 +1,25 @@
+{
+  "task": "ts-seat-holds",
+  "arm": "temper",
+  "rep": 3,
+  "base": "9214deaec8031f293e5df0e17240a1a586358e13",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": true,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-sonnet-5-5": 0.8410233000000001,
+    "claude-opus-5-5": 2.0940262
+  },
+  "cost_usd": 2.935,
+  "cost_results": "sum",
+  "wall_s": 580,
+  "api_s": 0,
+  "turns": 0,
+  "sessions": 1,
+  "questions": 16,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": "none"
+}

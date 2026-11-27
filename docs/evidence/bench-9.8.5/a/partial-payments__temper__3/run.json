@@ -1,0 +1,25 @@
+{
+  "task": "partial-payments",
+  "arm": "temper",
+  "rep": 3,
+  "base": "cdd11d39b3cd85278c9167bd2b152a3607cf238a",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": true,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-sonnet-5-5": 0.9877002999999999,
+    "claude-opus-5-5": 1.5115956
+  },
+  "cost_usd": 2.4993,
+  "cost_results": "sum",
+  "wall_s": 613,
+  "api_s": 0,
+  "turns": 0,
+  "sessions": 1,
+  "questions": 12,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": "none"
+}

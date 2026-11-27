@@ -1,8 +1,8 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
-  "version": "9.8.4",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a stage bar in Claude Code.",
+  "version": "9.8.5",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -24,20 +24,12 @@
   ],
   "commands": [
     "./commands/temper.md",
-    "./commands/intent.md",
-    "./commands/plan.md",
-    "./commands/design.md",
-    "./commands/build.md",
-    "./commands/review.md",
-    "./commands/check.md",
-    "./commands/fix.md",
-    "./commands/pack.md",
-    "./commands/status.md",
-    "./commands/init.md"
+    "./commands/fix.md"
   ],
   "agents": [
     "./agents/intent.md",
     "./agents/plan.md",
+    "./agents/plan-revise.md",
     "./agents/plan-review.md",
     "./agents/design.md",
     "./agents/build.md",
@@ -50,9 +42,6 @@
     "./agents/acceptance.md"
   ],
   "skills": [
-    "./skills/temper-core",
-    "./skills/context-engineering",
-    "./skills/source-driven-development",
     "./skills/grill-me",
     "./skills/teach-me"
   ],
@@ -68,7 +57,7 @@
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
-      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only. Values: on or off.",
+      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only, while the plugin's classic write hook still refuses a project file write before the plan approval. Values: on or off.",
       "default": "on",
       "sensitive": false
     },
@@ -81,8 +70,8 @@
     },
     "phaseModels": {
       "type": "string",
-      "title": "Per-phase models",
-      "description": "Optional. Comma separated phase=model pairs such as build=sonnet. Empty means no change.",
+      "title": "Models per stage",
+      "description": "Optional. Comma separated stage=model pairs such as build=sonnet. Empty means no change.",
       "default": "",
       "sensitive": false
     },

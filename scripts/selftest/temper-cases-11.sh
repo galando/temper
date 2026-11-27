@@ -104,7 +104,7 @@ The CLI prints plain text.
 ### Success Criteria
 - [ ] AC-01 [required]: the CLI lists categories
   Why: people need them
-  Validate: code — the listing test
+  Validate: code — `test -f unit/test_cli.py`
 - [ ] AC-02 [required]: the CLI lists categories in color
   Why: people scan by color
   Validate: scenario — the color scenario
@@ -127,13 +127,16 @@ F7CMD="pytest unit/test_cli.py::test_color_output_for_each_category_listed -q"; 
 fresh; f7_intent; : > .temper/evidence/build.json
 OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json)"
 assert_eq "F7: with no row each criterion says why: code FAIL, scenario FAIL naming the Test: cut at 60, manual CONFIRM" \
-  "AC-01 FAIL: Validate: code, and no passing row records it.|AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) has no row run by the CLI.|AC-03 CONFIRM: the person confirms it at Check" \
+  "AC-01 FAIL: its command has no row run by the CLI (test -f unit/test_cli.py).|AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) has no row run by the CLI.|AC-03 CONFIRM: the person confirms it at Check" \
   "$(echo "$OUT" | paste -sd'|' -)"
-"$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- bash -c 'exit 4' >/dev/null 2>&1
+# rule 5: only a run of the scenario's own Test: command traces it, so the CLI runs that command (a stand in for pytest)
+mkdir -p "$WORKDIR/.f7bin"; printf '#!/bin/sh\nexit "${F7_EXIT:-0}"\n' > "$WORKDIR/.f7bin/pytest"; chmod +x "$WORKDIR/.f7bin/pytest"
+PATH="$WORKDIR/.f7bin:$PATH" F7_EXIT=4 "$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- $F7CMD >/dev/null 2>&1
 OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p)"
 assert_eq "F7: a failed scenario line names the scenario, its command cut at 60 characters, and the exit" \
   "AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) exit 4." "$OUT"
-"$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- true >/dev/null 2>&1
+PATH="$WORKDIR/.f7bin:$PATH" "$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- $F7CMD >/dev/null 2>&1
+rm -rf "$WORKDIR/.f7bin"
 "$TEMPER" evidence add --stage build --scenario 'the CLI lists categories in color' --claim 'an agent says it passed' --cmd true --exit 0 >/dev/null 2>&1
 assert_eq "F7: a CLI-run row with exit 0 passes the scenario criterion" "AC-02 PASS: 1 scenario(s) ran green" \
   "$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p)"
@@ -197,15 +200,12 @@ assert_eq "F17: a timed out group gate is recorded as a timeout with its limit" 
   "$(python3 -c "import json; g=json.load(open('.temper/groups.json'))['groups']['G1']['gate']; print(g['verdict']+'|'+str(g.get('timeout_s')))")"
 assert_exit "F17: --timeout-s takes a whole number" 1 "$TEMPER" group gate G1 --timeout-s abc
 
-# --- F8. The fallback record pass: a gate that fails only for rows nobody recorded sends a fix pass that records and changes no code ---
+# --- F8. No record pass (WP27): a gate that fails for criterion rows nobody ran asks its question; the CLI runs the commands ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
-gfail build "criteria validated" "AC-01 FAIL: scenario 'first' (no Test: line) has no row run by the CLI. AC-02 FAIL: Validate: code, and no passing row records it."
-assert_eq "F8: only missing rows: the fix pass is launched with Record lines, and no code is to change" "work|temper:temper-build|1|1|1|1" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Record scenario: first')), str(a['prompt'].count('Record criterion: AC-02')), str(a['prompt'].count('Record only')), str(int('state set record_pass' in ' '.join(a['after'])))])")"
-assert_eq "F8: the record pass's gate call is the last of its after calls" "gate build" "$(nx "d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
-"$TEMPER" state set record_pass "$(nx "d['agents'][0]['after'][-2].split('record_pass ', 1)[1].strip(chr(39))")" >/dev/null 2>&1
-assert_eq "F8: the pass runs once per round: the next call asks the gate question" "ask" "$(nx "d['action']")"
+gfail build "criteria validated" "AC-01 FAIL: scenario 'first' (no Test: line) has no row run by the CLI. AC-02 FAIL: its command has no row run by the CLI (true)."
+assert_eq "F8: only missing rows: no agent is launched to record them, and the gate question is asked" "ask|0" \
+  "$(nx "'|'.join([d['action'], str(len(d.get('agents') or []))])")"
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 gfail build "criteria validated" "AC-02 FAIL: scenario 'second' (bash -c 'exit 3') exit 3."
@@ -231,15 +231,19 @@ assert_eq "F16: tasks and no groups stops Build with a question and no agent" "a
   "$(nx "'|'.join([d['action'], d['ask']['question']['question'], d['ask']['options'][0]['label'], d['ask']['options'][1]['label']])")"
 assert_eq "F16: Run Plan again is a loop from Build to Plan with a reason" "back|1" \
   "$(nx "d['ask']['options'][0]['move'] + '|' + str(len(d['ask']['options'][0]['calls']))")"
-"$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-assert_eq "F16: with the loop budget spent the text says to write the groups by hand or save" "1" \
-  "$(nx "str(int('write the groups by hand' in d['ask']['question']['question']))")"
+for _f16 in 1 2; do   # WP10: each Run Plan again from tasks with no groups spends gate:build; two spend it
+  "$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+done
+assert_eq "F16: with the loop budget spent the question is run.budget: the count, Save for later, Allow two more" \
+  "run.budget|count|Save for later (Recommended)|Allow two more" \
+  "$(nx "'|'.join([d['ask']['id'], 'count' if 'Build was repeated 2 times (limit 2)' in d['ask']['question']['question'] else d['ask']['question']['question'][:70], d['ask']['options'][0]['label'], d['ask']['options'][1]['label']])")"
 
-# --- F17. After a timed out group gate the question offers a rerun at double the limit ---
+# --- F17. After a first timed out group gate the CLI runs the gate again with twice the limit, as its own call ---
+# WP20: the option "Run the gate again with twice the time" is gone; the first time out is no question
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "timeout_s": 600}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the gate again with twice the time (Recommended)|group gate G1 --timeout-s 1200" \
-  "$(nx "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F17 (WP20): a first timed out gate runs again at 1200 seconds as the CLI's own call, not a question" "auto|group gate G1 --timeout-s 1200" \
+  "$(nx "d['action'] + '|' + next((c.split('temper ', 1)[1] for c in d.get('calls') or [] if 'group gate' in c), 'none')")"
 
 # --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -250,10 +254,14 @@ assert_eq "F13: Change asks Which task changes? with one option per task; a task
   "Which task changes?|Task 1 (with Task 2)|Task 2|Task 3|Task 4" \
   "$(nx "c = d['ask']['change']['question']; c['question'] + '|' + '|'.join(o['label'] for o in c['options'])")"
 assert_eq "F13: a task's option reopens the task and its companions with the feedback number" \
-  "group reopen G1 --task 1 --task 2 --feedback {K}|Re-runs Task 1 and Task 2; the other tasks of G1 keep their work." \
+  "group reopen G1 --task 1 --task 2 --feedback 1|Re-runs Task 1 and Task 2; the other tasks of G1 keep their work." \
   "$(nx "o = d['ask']['change']['options'][0]; o['calls'][0].split('temper ', 1)[1] + '|' + o['description']")"
-assert_eq "F13: Change records each feedback item first" "1" \
-  "$(nx "str(int('evidence add --stage build --phase feedback --claim' in d['ask']['options'][1]['do'] and 'Which task changes?' in d['ask']['options'][1]['do']))")"
+assert_eq "F13: Change records each feedback item first" "group feedback G1 --text '{answer}'|1" \
+  "$(nx "o = d['ask']['options'][1]; o['calls'][0].split('temper ', 1)[1] + '|' + str(int(bool(o.get('answer_question')) and 'do' not in o))")"
+"$TEMPER" group feedback G1 --text 'Task 3: keep the old name' >/dev/null 2>&1
+assert_eq "F13 (WP16): the typed change is feedback #1 of G1, and the next question is Which task changes? with that number" \
+  "group.change|feedback #1: Group G1: Task 3: keep the old name|group reopen G1 --task 3 --feedback 1" \
+  "$(nx "d['ask']['id'] + '|' + __import__('json').load(open('.temper/evidence/build.json'))[-1]['claim'] + '|' + d['ask']['options'][2]['calls'][0].split('temper ', 1)[1]")"
 
 # --- F14. The small-change window ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -329,7 +337,7 @@ assert_eq "F19: Accept runs task accept with the question's own reason, no secon
 assert_eq "F19: Accept it as done is the move covered, not a finding's accept (9.8.0)" "covered|redo" \
   "$(nx "o = d['ask']['options']; o[0]['move'] + '|' + o[1]['move']")"
 assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1
-printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; _ran_unattended
 assert_eq "F19: an armed run takes the covered task as done, with a reason, and does not park" "auto|1|0" \
   "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'task accept 1 --reason' in c)) + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
 printf 'stack: auto\n' > .claude/temper.config
@@ -346,7 +354,7 @@ paths = ['.claude/temper.config', '.claude/settings.json', '.temper/specs/x/inte
 print('|'.join('yes' if m.counts(p) else 'no' for p in paths))
 PYT
 )"
-setup; "$TEMPER" state set run_mode autonomous >/dev/null
+setup; _ran_unattended
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
 printf 'stack: auto\nautonomy:\n  enabled: true\n  max-blast-radius: 1\n' > .claude/temper.config
 mkdir -p htmlcov .pytest_cache; echo x > .coverage; echo x > htmlcov/index.html; echo x > .pytest_cache/f
@@ -391,6 +399,19 @@ assert_eq "F22: a Maven group that does not verify with JaCoCo is named by the p
 sed -i 's/^\*\*Validate:\*\* `mvn test`$/**Validate:** `mvn verify -Pjacoco`/' .temper/specs/demo/tasks.md
 assert_eq "F22: mvn verify with JaCoCo passes the row" "True" \
   "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
+sed -i 's/^\*\*Validate:\*\* `mvn verify -Pjacoco`$/**Validate:** `cd backend \&\& mvn test`/' .temper/specs/demo/tasks.md
+assert_eq "F22: a Validate that changes folder before mvn is a Maven group the row names" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+sed -i 's/^\*\*Validate:\*\* `cd backend && mvn test`$/**Validate:** `cd backend \&\& mvn verify -Djacoco.skip=true`/' .temper/specs/demo/tasks.md
+assert_eq "F22: mvn verify with JaCoCo switched off fails the group row too" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+assert_eq "maven_parts: env words and a cd before mvnw are read; no Maven command gives none" "[{'dir': 'backend', 'args': ['./mvnw', '-q', 'verify']}]|[]|True|False" \
+  "$(python3 -I - "$REPO_ROOT/scripts" <<'PYT'
+import sys; sys.path.insert(0, sys.argv[1])
+import maven_loop as m
+print('|'.join([str(m.maven_parts('FOO=1 cd backend && ./mvnw -q verify')), str(m.maven_parts('true')), str(m.is_maven('mvn test')), str(m.is_maven('cd b && mvn test'))]))
+PYT
+)"
 
 # --- F6. The Context Map: the plan gate row, the Context check as the CLI's own question, and plan review ---
 _cmap() { # _cmap <reviewed line> [entry lines...]: plan.md with a Context Map at the top
@@ -406,10 +427,13 @@ assert_eq "F6: auto mode refuses reviewed: auto when the map has a gap" "False" 
 _cmap auto '- use: intent.md - scope'
 assert_eq "F6: always refuses every reviewed: auto, and off accepts a gap" "False|True" "$(_crow always | cut -d'|' -f1)|$(_cmap auto '- gap: x'; _crow off | cut -d'|' -f1)"
 _cmap pending '- use: intent.md - scope'
-assert_eq "F6: pending fails and says the answer is not recorded yet" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c 'answer is not recorded yet')"
+assert_eq "F6: pending fails where the person is asked and says the answer is not recorded yet (WP13: a clean map is not asked under auto)" \
+  "False|1|True|1" "$(_crow always | cut -d'|' -f1)|$(_crow always | grep -c 'answer is not recorded yet')|$(_crow auto | cut -d'|' -f1)|$(
+    _crow auto | grep -c 'not asked: no flagged line')"
 assert_eq "F6: off mode passes pending — nobody is asked" "True" "$(_crow off | cut -d'|' -f1)"
 _cmap human
-assert_eq "F6: a map with no use, ignore or gap entry fails" "False" "$(_crow auto | cut -d'|' -f1)"
+assert_eq "WP26 F6: a map with no use, ignore or gap entry passes, as no map does: nothing is flagged" "True|True" \
+  "$(_crow auto | cut -d'|' -f1)|$(printf '# Plan\n\n## Blast Radius\n\nnone\n' > .temper/specs/demo/plan.md; _crow auto | cut -d'|' -f1)"
 { printf '# Plan\n\n## Context Map\n'; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf -- '- use: source %s\n' "$i"; done; printf -- '- reviewed: human\n'; } > .temper/specs/demo/plan.md
 assert_eq "F6: more than 12 entries fails, naming the cap" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c '12')"
 { printf '# Plan\n\n## Context Map\n- use: %s\n- reviewed: human\n' "$(printf 'x%.0s' $(seq 1 120))"; } > .temper/specs/demo/plan.md
@@ -421,10 +445,12 @@ _cmap pending '- use: intent.md - scope' '- ignore: .temper/specs/old/ - other s
 "$TEMPER" plan review --answer "Narrow the focus" --focus "src/auth/" >/dev/null 2>&1
 assert_eq "F6: plan review writes the answer and focus into the map and sets reviewed: human" "1|1|1|0" \
   "$(grep -c '^- answer: Narrow the focus' .temper/specs/demo/plan.md)|$(grep -c '^- focus: src/auth/' .temper/specs/demo/plan.md)|$(grep -c '^- reviewed: human' .temper/specs/demo/plan.md)|$(grep -c 'reviewed: pending' .temper/specs/demo/plan.md)"
-assert_exit "F6: an answer over 100 characters is refused" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 130))"
+assert_exit "F6: an answer over 2000 characters is refused (9.8.5: 100 refused the Include option's own text)" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 2010))"
 # the question in next and the view
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n' >> .temper/specs/demo/intent.md
+# WP13: under auto a gap line the approval can show whole is folded into it (temper-cases-54.sh); always keeps the question
+printf 'plan:\n  context-check: always\n' >> .claude/temper.config
 _cmap pending '- use: intent.md - scope' '- gap: no rate limit policy'
 gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
 assert_eq "F6: the pending check is the plan gate's only failed row: ask is the Context check, not the failed gate question" \
@@ -464,13 +490,14 @@ assert_eq "F7: a Validate type checked at Check, and a deferred optional criteri
 rm -rf f7skip
 setup
 
-# --- The audit of the port (F14, F18): Teach Me gives way to the small change at a passed Review with open findings; the Review snapshot; the worktree copy wins through task test ---
+# --- The audit of the port (F14, F18): at a passed Review with open findings the small change is offered (M2 of WP08: Teach Me stays); the Review snapshot; the worktree copy wins through task test ---
 _all_labels() { nx "'|'.join([o['label'] for o in d['ask']['options']] + [o['label'] for o in d['ask'].get('more', {}).get('options', [])])"; }
 fresh; gpass intent plan build review; _at review
 mkdir -p .temper/evidence; printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}]\n' > .temper/evidence/review.json
 assert_eq "F14: at a passed Review with no finding, Teach Me stays and no small change is offered beside it" "1|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
 printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}, {"claim": "src/a.sh:3 a style nit", "severity": "low", "label": "HEURISTIC", "confidence": 80}]\n' > .temper/evidence/review.json
-assert_eq "F14: with an open finding Teach Me gives way to Make a small change, in both questions" "0|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
+assert_eq "F14: with an open finding Teach Me stays, Make a small change is offered and the Architecture Depth Review gives way" "1|1|0" \
+  "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')|$(_all_labels | tr '|' '\n' | grep -c '^Architecture Depth Review$')"
 setup
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
@@ -486,6 +513,16 @@ _at review; "$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 
 "$TEMPER" adhoc close >/dev/null 2>&1
 assert_eq "F14: a change of docs only takes no snapshot" "0" \
   "$(python3 -c "import json; print(int(bool(json.load(open('.temper/build-state.json')).get('review_snapshot'))))")"
+# M7 of WP08: a small change at Check, in a project whose test command the CLI can run, is checked by the CLI with no agent
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+sed -i 's/^check:$/check:\n  commands:\n    test: "true"/' .claude/temper.config
+git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+_at check; "$TEMPER" adhoc open --stage check --reason "fix an off by one" >/dev/null 2>&1
+mkdir -p src; echo changed-again > src/a.sh
+"$TEMPER" adhoc close >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; gpass review   # the Review step of the change ran and passed: the Check step comes next
+assert_eq "M7: a small change at Check is checked by the CLI" "steps=check,commit|work|check run,gate check|agents=0" \
+  "steps=$(python3 -c "import json; print(','.join((json.load(open('.temper/build-state.json')).get('adhoc_done') or {}).get('steps', [])))")|$(nx "cs = [c.split('temper ', 1)[-1] for c in d.get('calls') or []]; d['action'] + '|' + ','.join(c for c in cs if c in ('check run', 'gate check')) + '|agents=' + str(len(d.get('agents') or []))")"
 setup
 # F18 through task test: a package importable from the project root (PYTHONPATH here) and from the task worktree: the worktree copy wins
 f9_tasks | m_setup
@@ -507,7 +544,7 @@ assert_eq "F18: task test runs with the task worktree first on PYTHONPATH, so th
 rm -rf f18inst f18probe
 setup
 # F14 in a fix run: the Fix stage question is asked, and it does not offer the small change (its change is the fix itself)
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
 _at fix; gpass build fix rca
 assert_eq "F14: a fix run's Fix stage question does not offer Make a small change" "ask|fix|0" \

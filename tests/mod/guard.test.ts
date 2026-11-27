@@ -7,9 +7,10 @@ import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult, RunFacts } from '../../hooks/temper-mod/core/rules'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { STAGES } from '../../hooks/temper-mod/core/stages'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { stateAt } from './helpers'
-import { nextCalls, optionCalls } from './run-files'
-import { CLI_SEQ } from './world'
+import { deriveView, nextCalls, optionCalls, runFiles, shownOf } from './run-files'
+import { CLI_SEQ, denyText, world } from './world'
 
 const SPEC = '.temper/specs/pw'
 const CLI = 'scripts/temper'
@@ -57,9 +58,10 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     }
   })
 
-  test('Plan allows the spec files, ADRs and context files but not other spec files', () => {
-    for (const p of [`${SPEC}/intent.md`, `${SPEC}/tasks.md`, `${SPEC}/design.md`, `${SPEC}/plan-context.json`, 'docs/decisions/0009-mods.md']) expect('allow' in write(ctx('plan'), p)).toBe(true)
+  test('Plan allows the spec files and context files but not other spec files, nor a decision record (rule 1)', () => {
+    for (const p of [`${SPEC}/intent.md`, `${SPEC}/tasks.md`, `${SPEC}/design.md`, `${SPEC}/plan-context.json`]) expect('allow' in write(ctx('plan'), p)).toBe(true)
     expect(isDeny(write(ctx('plan'), `${SPEC}/report.md`))).toBe(true)
+    for (const s of ['plan', 'design'] as const) expect(isDeny(write(ctx(s), 'docs/decisions/0009-mods.md'))).toBe(true)
   })
 
   test('Build allows test files, plan globs and folders', () => {
@@ -67,6 +69,22 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(ctx('build'), 'hooks/core/sub/a.ts', 'Edit'))).toBe(true)
     // tasks.md is the plan the person approved: from Design on it is the CLI's.
     expect(isDeny(write(ctx('build'), `${SPEC}/tasks.md`, 'Edit'))).toBe(true)
+  })
+
+  // WP12: the approval is bound to the intent as shown; from Build on a change to it needs a step back to Plan and a
+  // new approval, so no tool writes the run's intent.md. Before the approval the agents of Intent and Plan write it.
+  test('a write to the run\'s intent.md is refused at Build, Review, Check and Commit and allowed at Intent, Plan and Design', () => {
+    for (const tool of ['Write', 'Edit']) {
+      for (const stage of ['intent', 'plan', 'design'] as const) expect('allow' in write(ctx(stage), `${SPEC}/intent.md`, tool)).toBe(true)
+      for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+        const r = write(ctx(stage), `${SPEC}/intent.md`, tool)
+        expect(isDeny(r)).toBe(true)
+        if (isDeny(r)) {
+          expect(r.deny.startsWith('Temper: ')).toBe(true)
+          expect(r.deny).toContain('Plan')
+        }
+      }
+    }
   })
 
   test('absolute paths inside the root and traversal are normalised', () => {
@@ -117,14 +135,17 @@ describe('what only the person may cause, at the step the run is at', () => {
   test('leaving Intent and Plan needs the person, even after a passed check: the calls of the answer, word for word', () => {
     expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
     expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
-    expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'build'))).toBe(true)
+    expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-ask', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
+    // WP12: the approving advance carries the digests the question showed; the click lets that call through, word for word
+    const shown = shownOf('plan-pass', 'Ask me at every stage')
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build') + shown)).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build')))).toBe(true)
     // The script by any path: the words after it are the call.
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), 'cd x && /a/b/scripts/temper state advance plan_complete build' + shown)).toBe(true)
     // Another next stage than the answer names is another call.
-    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'design')))).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'design')))).toBe(true)
     const design = optionCalls('design-plan-pass', 'Continue to Design (Recommended)')
-    expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design') + shownOf('design-plan-pass', 'Continue to Design (Recommended)'))).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: design }), adv('plan', 'build')))).toBe(true)
     // Save for later is no approval.
     expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) }), adv('plan', 'build')))).toBe(true)
@@ -162,19 +183,54 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(isDeny(bash(ctx('review', { allowed: accept }), `${CLI} evidence accept --stage check --id 1 --reason x`))).toBe(true)
   })
 
-  test('arming autonomy needs the Autonomous answer at the plan gate', () => {
-    const arm = `${CLI} state set run_mode autonomous`
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Autonomous Build: run Build unattended') }), arm)).toBe(true)
-    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Stage by stage (Recommended)') }), arm))).toBe(true)
+  test('arming autonomy needs the Approve and build answer at the plan gate', () => {
+    // WP12: the arming call carries the digests the question showed (--shown), so it is read from the option
+    const arm = optionCalls('plan-pass-autonomy', 'Approve and build (Recommended)').find(c => c.includes('run_mode autonomous'))!
+      .replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Approve and build (Recommended)') }), arm)).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Ask me at every stage') }), arm))).toBe(true)
     expect(isDeny(bash(ctx('build'), arm))).toBe(true)
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
-  test('an armed run is Build alone (9.8.0): its own move ends the unattended part, and Review loops back only on the person\'s answer', () => {
+  // NEW-RULES-3 (WP12, rule 1): the branch and the first commit before the approval are the approving answer's own
+  // calls: typed alone at Intent or Plan they are denied, as the option's calls they run.
+  test('spec branch and spec commit before the approval map only to the person\'s answer', () => {
+    const opts = optionCalls('plan-pass-autonomy', 'Ask me at every stage')
+    const branch = opts.find(c => c.includes(' spec branch'))!.replace(/^\S+/, CLI)
+    const commit = opts.find(c => c.includes(' spec commit'))!.replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), branch)).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), commit)).toBe(true)
+    expect(isDeny(bash(ctx('plan'), branch))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), commit))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} spec branch`))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} spec commit 'docs(plan): pw'`))).toBe(true)
+    expect(isDeny(bash(ctx('intent'), `${CLI} spec branch`))).toBe(true)
+    expect('allow' in bash(ctx('design'), `${CLI} spec branch`)).toBe(true)
+  })
+
+  // NEW-RULES-3 (WP12): the approving first call carries the digests the question showed (--shown), whatever mode it
+  // sets: typed alone it is denied at any stage; without --shown only the arming form is.
+  test('a state set run_mode with --shown maps only to the person\'s answer', () => {
+    const opts = optionCalls('plan-pass-autonomy', 'Ask me at every stage')
+    const bind = opts.find(c => c.includes('run_mode interactive'))!.replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), bind)).toBe(true)
+    expect(isDeny(bash(ctx('plan'), bind))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} state set run_mode interactive --shown intent.md=x --shown tasks.md=y`))).toBe(true)
+    expect(isDeny(bash(ctx('build'), `${CLI} state set run_mode interactive --shown intent.md=x`))).toBe(true)
+    expect(isDeny(bash(ctx('build'), `${CLI} state set run_mode autonomous --shown intent.md=x`))).toBe(true)
+    expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
+  })
+
+  // WP24: the rule's loop back to Build is gone: at a failed Review the CLI's own move is the repair in the stage, or a
+  // recorded stop (the park call) where the repair may not start (this fixture is no repository with a reviewed HEAD)
+  test('WP24 the run to the commit: its own moves keep the mode, and Review never loops back by rule: its own move is the repair in the stage or a park', () => {
     const own = nextCalls('armed-build-pass')
-    expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review', 'state set run_mode interactive'])
+    expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review'])
     for (const c of own) expect('allow' in bash(ctx('build', { allowed: own }), c.replace(/^\S+/, CLI))).toBe(true)
-    expect(nextCalls('armed-review-fail').some(c => c.includes('state loop'))).toBe(false)
+    const move = nextCalls('armed-review-fail')
+    expect(move.length === 1 && /repair start --stage review$|park --verdict PARKED-NEEDS-DECISION /.test(move[0]!) && !move[0]!.includes('state loop')).toBe(true)
+    expect('allow' in bash(ctx('review', { allowed: move }), move[0]!.replace(/^\S+/, CLI))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
   })
 
@@ -190,12 +246,15 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect('allow' in bash(ctx('commit', { allowed: override }), `${CLI} override review --reason x && ${CLI} gate commit`)).toBe(true)
   })
 
-  test('clearing the run during a run needs the person\'s Start over, or the TRIVIAL exit, or the commit steps', () => {
+  test('clearing the run during a run needs the person\'s Start over or the commit steps; at Intent too (WP17)', () => {
     expect(isDeny(bash(ctx('build'), `${CLI} state archive`))).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state archive`)).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state init next`)).toBe(true)
     expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init next --command fix`))).toBe(true)
-    expect('allow' in bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`)).toBe(true)
+    // WP17: a trivial request is the CLI's verdict (`temper intent trivial`), closed by the flow; no state clear is let
+    // through at Intent, for an agent or the session, with the trivial window open or not
+    expect(isDeny(bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`))).toBe(true)
+    expect(isDeny(bash(ctx('intent', { facts: { step: 0 } }), `${CLI} state clear`))).toBe(true)
     expect(isDeny(bash(ctx('intent', { facts: { step: 2 } }), `${CLI} state clear`))).toBe(true)
     const steps = nextCalls('commit-record')
     expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state archive`)).toBe(true)
@@ -259,7 +318,8 @@ describe('review of the one flow: what goes around a gate', () => {
   test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
     // The commit steps come after the report and the person's answer about the page (scripts/flow.py, the end of the run).
     const c = ctx('commit', { allowed: nextCalls('commit-record') })
-    expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
+    // WP12: the intent is the approved one; the CLI completes it (`intent complete`), no tool writes it
+    expect(isDeny(write(c, `${SPEC}/intent.md`))).toBe(true)
     // Round 4 of the release audit: the code is what Review and Check passed; at Commit it is not written.
     expect(isDeny(write(c, 'src/anything.ts'))).toBe(true)
     for (const cmd of [`${CLI} state archive`, 'git add -A && git commit -m "feat: x"', `${CLI} state clear`, `${CLI} state set run_mode interactive`]) {
@@ -306,5 +366,452 @@ describe('the store of the person\'s decisions', () => {
     const store = '/root/.claude/plugins/data/temper-inline/store.json'
     expect(isDeny(write(ctx('plan'), store))).toBe(true)
     expect('allow' in write({ ...ctx('plan'), run: null }, store)).toBe(true)
+  })
+})
+
+// WP17: the trivial window. After `temper intent trivial` the run state holds the verdict and the view says
+// guard.trivial_exit: the Intent agent may then make the one change outside the spec folder. The window is Intent's
+// only; the record .temper/trivial.json, which holds the commit to the bound, is the CLI's to write, the window open or
+// not.
+describe('the trivial window: the Intent agent writes the one change while the verdict is recorded', () => {
+  const open = (stage: Stage = 'intent') => ctx(stage, { facts: { step: 0, trivialExit: true } })
+  test('while the trivial window is open the Intent agent may write a project file; with it closed it is refused', () => {
+    for (const tool of ['Write', 'Edit']) {
+      expect('allow' in write(open(), 'src/app.ts', tool), tool).toBe(true)
+      expect('allow' in write(open(), 'README.md', tool), tool).toBe(true)
+      expect(isDeny(write(ctx('intent', { facts: { step: 0, trivialExit: false } }), 'src/app.ts', tool)), tool).toBe(true)
+    }
+    // the window is Intent's: the flag at a later stage opens nothing
+    for (const stage of ['plan', 'design', 'review', 'check'] as const) {
+      expect(isDeny(write(open(stage), 'src/app.ts')), stage).toBe(true)
+    }
+  })
+  test('the record of the verdict, .temper/trivial.json, is refused to a tool and to a shell write, the window open or not', () => {
+    const f = '.temper/trivial.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
+    for (const c of [open(), ctx('intent'), ctx('plan'), ctx('build'), ctx('check')]) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(c, f, tool)), `${c.run?.stage} ${tool}`).toBe(true)
+      expect(guarded(write(c, `/repo/${f}`)), `${c.run?.stage} absolute`).toBe(true)
+      for (const cmd of [`echo '{}' > ${f}`, `printf x >> ${f}`, `rm ${f}`, `rm -f ${f}`, `cp /tmp/t.json ${f}`]) {
+        expect(guarded(bash(c, cmd)), `${c.run?.stage}: ${cmd}`).toBe(true)
+      }
+    }
+    for (const cmd of ['rm .temper/triv*.json', 'rm -f .temper/t?ivial.json']) {
+      expect(isDeny(bash(open(), cmd)), cmd).toBe(true)
+    }
+  })
+  test('the verdict is the CLI\'s: state set trivial, or a path below it, is refused, the window open or not', () => {
+    for (const c of [ctx('intent', { facts: { step: 0 } }), open(), ctx('build')]) {
+      for (const key of ['trivial', 'trivial.why', 'trivial.dirty_before']) {
+        expect(isDeny(bash(c, `${CLI} state set ${key} x`)), `${c.run?.stage}: ${key}`).toBe(true)
+      }
+    }
+  })
+})
+
+// 9.8.5 (WP08, M14): the files of the CLI that can turn a gate row are guarded like the gate verdicts: the store of
+// reused passes and the Design answers (WP21: the per command check of the plan and its two stores are gone).
+describe('the files that turn a gate row', () => {
+  const FILES = [
+    '.git/temper-results.json', '.temper/decisions.json',
+    '.temper/check/ahead.json', '.temper/rule-log.json',
+  ]
+  const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
+  for (const f of FILES) {
+    test(`during a run a Write, a Bash redirect and an rm of ${f} are refused`, () => {
+      for (const stage of ['plan', 'build', 'check'] as const) {
+        for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), f, tool)), `${stage} ${tool}`).toBe(true)
+        expect(guarded(write(ctx(stage), `/repo/${f}`)), `${stage} absolute`).toBe(true)
+        for (const cmd of [`echo '{}' > ${f}`, `printf x >> ${f}`, `rm ${f}`, `rm -f ${f}`]) {
+          expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+        }
+      }
+    })
+  }
+  test('rm .temper/*.json, and a glob that spells only the new files, are refused', () => {
+    for (const cmd of ['rm .temper/*.json', 'rm -f .temper/[dp]*.json', 'rm .temper/deci*.json', 'rm .git/temper-*.json']) {
+      expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP10): one budget in the CLI. Only the person grants more repeats, at the question at the limit (run.budget,
+// option grant-more); the record of the repeats, .temper/budget.json, is the CLI's to write.
+describe('the budget: only the person grants more, and its record is the CLI\'s', () => {
+  const GRANT = `${CLI} budget grant --key gate:check --reason "{reason}"`
+  const grant = (key: string, reason = 'x'): string => `${CLI} budget grant --key ${key} --reason "${reason}"`
+  test('budget grant outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      expect(bash(ctx(stage), grant(`gate:${stage}`, 'the next try is different')), stage).toEqual({ deny: ONLY_USER })
+    }
+    // no other call of an answer lets it through: the step back of the same question is not a grant
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), grant('gate:check'))).toEqual({ deny: ONLY_USER })
+  })
+
+  test('budget grant passes as the call of the answer, word for word: the same key, one reason', () => {
+    const c = ctx('check', { allowed: [GRANT] })
+    expect('allow' in bash(c, grant('gate:check', 'I changed something outside the run'))).toBe(true)
+    const other = "cd x && /a/b/scripts/temper budget grant --key gate:check --reason 'the next try is different'"
+    expect('allow' in bash(c, other)).toBe(true)
+    for (const cmd of [
+      grant('gate:build'),
+      grant('group:G1'),
+      `${grant('gate:check')} --key gate:build`,
+      `${grant('gate:check')} && ${grant('gate:check', 'y')} --key task:1`,
+    ]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell budget or grant is refused; printing the record is not the person\'s', () => {
+    for (const cmd of [`${CLI} b?dget grant --key gate:check --reason x`, `${CLI} budget gr?nt --key gate:check`]) {
+      expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(ctx('check'), `${CLI} budget`)).toBe(true)
+  })
+
+  test('during a run a write of .temper/budget.json is refused: an editing tool, a redirect, an rm, a glob', () => {
+    const f = '.temper/budget.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), f, tool)), `${stage} ${tool}`).toBe(true)
+      expect(guarded(write(ctx(stage), `/repo/${f}`)), `${stage} absolute`).toBe(true)
+      for (const cmd of [`echo '{}' > ${f}`, `printf x >> ${f}`, `rm ${f}`, `rm -f ${f}`, `cp /tmp/b.json ${f}`]) {
+        expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
+    for (const cmd of ['rm .temper/bu?get.json', 'rm -f .temper/budg*.json']) {
+      expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP20): "Go on anyway" at the red base question (base.red) is a recorded skip of the suite: only the
+// person's answer runs `baseline accept-red`, word for word as the option wrote it. The baseline's own calls (start,
+// clean) are the CLI's and pass.
+describe('the red base: only the person goes on anyway', () => {
+  const ACCEPT = `${CLI} baseline accept-red --reason '{reason}'`
+  const accept = (reason = 'the base was red before this run'): string => `${CLI} baseline accept-red --reason '${reason}'`
+  test('baseline accept-red outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['intent', 'plan', 'build', 'review', 'check'] as const) {
+      expect(bash(ctx(stage), accept()), stage).toEqual({ deny: ONLY_USER })
+    }
+    // the call of another answer does not let it through
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), accept())).toEqual({ deny: ONLY_USER })
+  })
+
+  test('baseline accept-red passes as the call of the answer, word for word, with one reason', () => {
+    const c = ctx('intent', { allowed: [ACCEPT] })
+    expect('allow' in bash(c, accept('I know the base is red'))).toBe(true)
+    for (const cmd of [`${accept()} && ${accept('again')}`, `${accept()}; ${CLI} override check --reason x`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell accept-red is refused; the baseline\'s own calls are the CLI\'s', () => {
+    expect(isDeny(bash(ctx('intent'), `${CLI} baseline accept-r?d --reason x`))).toBe(true)
+    for (const cmd of [`${CLI} baseline start`, `${CLI} baseline start --again`, `${CLI} baseline clean`]) {
+      expect('allow' in bash(ctx('intent'), cmd), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP22, step 11): "Run it anyway" (`--fresh`), a check run whatever the reuse store holds, is the person's
+// option only: it passes as the call of the answer, word for word. The same calls without the flag are the CLI's.
+describe('run it anyway: only the person runs a check whatever the store holds', () => {
+  const FRESH = [`${CLI} check run --fresh`, `${CLI} check build-checks --fresh`, `${CLI} group gate G1 --fresh`,
+    `${CLI} group gate G1 --timeout-s 60 --fresh`, `${CLI} integrate --fresh`]
+  test('a --fresh call outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+      for (const cmd of FRESH) expect(bash(ctx(stage), cmd), `${stage}: ${cmd}`).toEqual({ deny: ONLY_USER })
+    }
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), `${CLI} check run --fresh`)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('it passes as the call of the answer, word for word; without the flag the calls are the CLI\'s', () => {
+    const c = ctx('check', { allowed: [`${CLI} check run --fresh`] })
+    expect('allow' in bash(c, `${CLI} check run --fresh`)).toBe(true)
+    for (const cmd of [`${CLI} integrate --fresh`, `${CLI} group gate G1 --fresh`, `${CLI} check build-checks --fresh`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(ctx('check'), `${CLI} check run`)).toBe(true)
+    for (const cmd of [`${CLI} group gate G1`, `${CLI} group gate G1 --timeout-s 60`, `${CLI} integrate`, `${CLI} check build-checks`]) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell --fresh is refused', () => {
+    for (const cmd of [`${CLI} check run --fr?sh`, `${CLI} integrate --fre*`]) expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+  })
+})
+
+// 9.8.5 (WP27, step 7; lane B of phase 7): a criterion the person confirms at the Check question (manual, or code or a
+// metric with no command) counts only from a row of the person: the confirm option's `evidence add --person`. The mod
+// lets that call through only as the call of the answer, word for word, as it does Run it anyway; the same row without
+// the flag is any session's, and the gate does not count it.
+describe('the person\'s confirmation of a criterion: only the person records a row --person', () => {
+  const CONFIRM = `${CLI} evidence add --stage check --criterion AC-02 --claim 'confirmed by the person at the Check question: read the output' --cmd 'the person, at the Check question' --exit 0 --person`
+  test('a --person row outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+      expect(bash(ctx(stage), CONFIRM), stage).toEqual({ deny: ONLY_USER })
+      expect(bash(ctx(stage), `${CLI} evidence add --stage check --claim x --person`), stage).toEqual({ deny: ONLY_USER })
+    }
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), CONFIRM)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('it passes as the call of the answer, word for word; without the flag the row is any session\'s', () => {
+    const c = ctx('check', { allowed: [CONFIRM] })
+    expect('allow' in bash(c, CONFIRM)).toBe(true)
+    expect(isDeny(bash(c, CONFIRM.replace('AC-02', 'AC-03')))).toBe(true)
+    expect('allow' in bash(ctx('check'), CONFIRM.replace(' --person', ''))).toBe(true)
+  })
+
+  test('an unquoted glob that could spell --person is refused', () => {
+    for (const cmd of [`${CLI} evidence add --stage check --claim x --pers?n`, `${CLI} evidence add --stage check --claim x --per*`]) {
+      expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP22): the reuse store decides gate rows: a pass kept there is a check that is not run again, a failure kept
+// there is a check that is not run again either. It is one file in the git common folder, shared by every worktree of
+// the clone, and only the CLI's runner writes it, the byproduct list in it included.
+describe('the reuse store: a write to temper-results.json in the git folder is refused', () => {
+  const STORE = '.git/temper-results.json'
+  const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+  // the store as a session in the project folder, in a group worktree under .claude/worktrees/ and by an absolute path
+  // names it
+  const PATHS = [STORE, `/repo/${STORE}`, `../../../${STORE}`, `/repo/.claude/worktrees/temper-pw-G1/../../../${STORE}`]
+  test('an editing tool is refused at every stage of a run, from the project folder and from a group worktree', () => {
+    for (const stage of ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), p, tool)), `${stage} ${tool} ${p}`).toBe(true)
+      }
+    }
+  })
+  test('a shell write is refused: a redirect, tee, cp, mv, sed -i, truncate and rm', () => {
+    for (const stage of ['build', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const cmd of [`echo '{}' > ${p}`, `printf x >> ${p}`, `: > ${p}`, `echo '{}' | tee ${p}`, `cp /tmp/kept.json ${p}`,
+          `mv /tmp/kept.json ${p}`, `sed -i 's/fail/pass/' ${p}`, `truncate -s 0 ${p}`, `rm -f ${p}`]) {
+          expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+        }
+      }
+    }
+  })
+})
+
+// 9.8.5 (WP23): the failure record decides the next step at a failed Build gate (its class) and counts toward what
+// a rule does; one file of the evidence folder, written only by scripts/failure.py through the CLI. A step back
+// leaves it.
+describe('the failure record: a write to .temper/evidence/failures.json is refused', () => {
+  const FILE = '.temper/evidence/failures.json'
+  const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+  const PATHS = [FILE, `/repo/${FILE}`, `/repo/.claude/worktrees/temper-pw-G1/../../../${FILE}`]
+  test('an editing tool is refused at every stage of a run', () => {
+    for (const stage of ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), p, tool)), `${stage} ${tool} ${p}`).toBe(true)
+      }
+    }
+  })
+  test('a shell write is refused: a redirect, tee, cp, mv, sed -i, truncate and rm', () => {
+    for (const stage of ['build', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const cmd of [`echo '[]' > ${p}`, `printf x >> ${p}`, `: > ${p}`, `echo '[]' | tee ${p}`, `cp /tmp/none.json ${p}`,
+          `mv /tmp/none.json ${p}`, `sed -i 's/environment/code/' ${p}`, `truncate -s 0 ${p}`, `rm -f ${p}`]) {
+          expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+        }
+      }
+    }
+  })
+})
+
+// 9.8.5 (WP21): "Go on anyway" at plan.command skips the check of one command the plan wrote, with a reason: only the
+// person's answer runs `baseline skip`. The run of the plan's commands (`baseline plan`) is the CLI's and passes.
+describe('a command the plan wrote: only the person skips its check', () => {
+  const SKIP = `${CLI} baseline skip --cmd 'make check' --reason '{reason}'`
+  const skip = (reason = 'the check needs the staging data'): string => `${CLI} baseline skip --cmd 'make check' --reason '${reason}'`
+  test('baseline skip outside the person\'s answer is refused, at Plan and at Build', () => {
+    for (const stage of ['plan', 'build'] as const) {
+      expect(bash(ctx(stage), skip()), stage).toEqual({ deny: ONLY_USER })
+    }
+  })
+  test('baseline skip passes as the call of the answer; baseline plan is the CLI\'s', () => {
+    expect('allow' in bash(ctx('plan', { allowed: [SKIP] }), skip())).toBe(true)
+    for (const cmd of [`${CLI} baseline plan`, `${CLI} baseline plan --cmd 'make check'`]) {
+      expect('allow' in bash(ctx('plan'), cmd), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP24): a finding is repaired in its stage. `repair start` is the person's unless it is the CLI's own action;
+// `repair commit`, `close` and `revert` pass only as calls of the action the view names (the fixer's after call, the
+// recheck's, the CLI's revert). Inside a repair window (the view's guard.adhoc_kind `repair`) the write rule is
+// Build's: a planned file or a test passes, any other path is scope drift; the small change window still allows any
+// path.
+describe('WP24: the repair in the stage', () => {
+  const REPAIR = { adhocStage: 'review', ...({ adhocKind: 'repair' } as unknown as Over) }
+  test('repair start typed by an agent or the session is refused, at Review and at Check', () => {
+    for (const stage of ['review', 'check'] as const) {
+      for (const cmd of [`${CLI} repair start --stage ${stage}`, `${CLI} repair start --stage ${stage} --again`]) {
+        expect(isDeny(bash(ctx(stage), cmd)), cmd).toBe(true)
+      }
+    }
+  })
+  test('repair start passes as the CLI\'s own action, and the Repair again answer as the person\'s', () => {
+    const own = `${CLI} repair start --stage review`
+    expect('allow' in bash(ctx('review', { allowed: [own] }), own)).toBe(true)
+    const again = `${CLI} repair start --stage review --again`
+    expect('allow' in bash(ctx('review', { allowed: [again] }), again)).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: [own] }), again))).toBe(true)
+  })
+  test('repair commit, close and revert pass only as calls of the action the view names', () => {
+    for (const word of ['commit', 'close', 'revert']) {
+      const cmd = `${CLI} repair ${word}`
+      expect(isDeny(bash(ctx('review'), cmd)), cmd).toBe(true)
+      expect('allow' in bash(ctx('review', { allowed: [cmd] }), cmd), cmd).toBe(true)
+    }
+  })
+  test('the fixer\'s test runs and the status are no decision: repair test and repair status pass', () => {
+    for (const cmd of [`${CLI} repair test 1 --phase red -- sh unit/app.test.sh`, `${CLI} repair test 1 --phase green -- sh unit/app.test.sh`,
+      `${CLI} repair status`]) {
+      expect('allow' in bash(ctx('review', { facts: REPAIR }), cmd), cmd).toBe(true)
+    }
+  })
+  test('inside a repair window a write outside the plan is refused with the scope drift text; a planned file and a test pass', () => {
+    for (const tool of ['Write', 'Edit']) {
+      const r = write(ctx('review', { facts: REPAIR }), 'src/billing.ts', tool)
+      expect(isDeny(r) && r.drift, tool).toBe('src/billing.ts')
+      for (const word of ['scope drift', 'src/billing.ts', 'add to plan', 'revert', 'allow once']) expect(isDeny(r) && r.deny, `${tool} ${word}`).toContain(word)
+      expect('allow' in write(ctx('review', { facts: REPAIR }), 'src/app.ts', tool), tool).toBe(true)
+      expect('allow' in write(ctx('review', { facts: REPAIR }), 'unit/app.test.ts', tool), tool).toBe(true)
+    }
+    const atCheck = { adhocStage: 'check', ...({ adhocKind: 'repair' } as unknown as Over) }
+    expect(isDeny(write(ctx('check', { facts: atCheck }), 'src/billing.ts'))).toBe(true)
+    expect('allow' in write(ctx('check', { facts: atCheck }), 'src/app.ts')).toBe(true)
+  })
+  test('adhoc close inside a repair window is refused: repair commit ends it; in a small change window it passes', () => {
+    for (const stage of ['review', 'check'] as const) {
+      const facts = { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      for (const cmd of [`${CLI} adhoc close`, `${CLI} adhoc close && ${CLI} next --json`]) {
+        const r = bash(ctx(stage, { facts }), cmd)
+        expect(isDeny(r) && r.deny.includes('repair commit'), `${stage}: ${cmd}`).toBe(true)
+      }
+      expect('allow' in bash(ctx(stage, { facts: { adhocStage: stage } }), `${CLI} adhoc close`), stage).toBe(true)
+    }
+  })
+  test('inside a repair window the drift ask the scope drift text names passes the guard (the CLI takes it from the fixer)', () => {
+    for (const stage of ['review', 'check'] as const) {
+      const facts = { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      const r = write(ctx(stage, { facts }), 'src/billing.ts')
+      const named = isDeny(r) ? /(\S*temper drift ask --path src\/billing\.ts) /.exec(r.deny)?.[1] : undefined
+      expect(named, stage).toBeDefined()
+      expect('allow' in bash(ctx(stage, { facts }), `${named} --why 'the fix needs it' --change 'one line'`), stage).toBe(true)
+    }
+  })
+  // lane E (RE2): the fixer could widen the approved set by writing the person's answer row itself
+  test('an agent\'s evidence add of a Scope drift answer is refused unless the person gave it; Revert and other rows pass', () => {
+    const add = `${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Add to plan: the fixer'`
+    const once = `${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Allow once: the fixer'`
+    for (const stage of ['build', 'review', 'check'] as const) {
+      const facts = stage === 'build' ? {} : { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      for (const cmd of [add, once, add.replace(`--claim 'drift`, `--claim='drift`)]) {
+        const r = bash(ctx(stage, { facts }), cmd)
+        expect(isDeny(r) && r.deny.includes('src/other.ts'), `${stage}: ${cmd}`).toBe(true)
+      }
+      expect('allow' in bash(ctx(stage, { facts, drift: { added: ['src/other.ts'], allowOnce: [] } }), add), stage).toBe(true)
+      expect(isDeny(bash(ctx(stage, { facts, drift: { added: ['src/other.ts'], allowOnce: [] } }), once)), stage).toBe(true)
+      expect('allow' in bash(ctx(stage, { facts, drift: { added: [], allowOnce: [{ id: 'd1', path: 'src/other.ts' }] } }), once), stage).toBe(true)
+      expect('allow' in bash(ctx(stage, { facts, allowed: [add] }), add), stage).toBe(true)
+      for (const cmd of [`${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Revert: the fixer'`,
+        `${CLI} evidence add --stage build --phase drift --claim 'drift decided'`, `${CLI} evidence add --stage build --claim 'tests pass'`]) {
+        expect('allow' in bash(ctx(stage, { facts }), cmd), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
+  })
+  test('the control: a small change window still allows any path', () => {
+    for (const stage of ['review', 'check'] as const) {
+      expect('allow' in write(ctx(stage, { facts: { adhocStage: stage } }), 'src/billing.ts'), stage).toBe(true)
+      const small = { adhocStage: stage, ...({ adhocKind: 'small' } as unknown as Over) }
+      expect('allow' in write(ctx(stage, { facts: small }), 'src/billing.ts'), stage).toBe(true)
+    }
+  })
+})
+
+// The same through the real hook: the mod reads guard.adhoc_kind of the view the CLI wrote (core/runview.ts,
+// adapter.ts).
+describe('WP24: the repair window is read from the view', () => {
+  const START = { cwd: '/repo', surface: null, isInteractive: false } as const
+  const files = (kind: string | null): Record<string, string> => {
+    const f = runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } })
+    const v = JSON.parse(deriveView(p => f[p]) ?? '{}') as { guard: Record<string, unknown> }
+    v.guard.adhoc_stage = 'review'
+    if (kind !== null) v.guard.adhoc_kind = kind
+    return { ...f, '.temper/view.json': JSON.stringify(v) }
+  }
+  test('parseRunView reads adhoc_kind beside adhoc_stage', () => {
+    const rv = parseRunView(files('repair')['.temper/view.json'] as string)
+    expect(rv?.guard?.adhocStage).toBe('review')
+    expect((rv?.guard as unknown as Record<string, unknown> | null | undefined)?.adhocKind).toBe('repair')
+  })
+  test('an agent\'s write outside the plan is scope drift in a repair window, and passes in a small change window', async ($, on) => {
+    world(on, files('repair'), { projectRoot: '/repo' })
+    await $.session.start(START)
+    const outside = denyText(await $.tool.call({ tool: 'Write', file_path: 'src/billing.ts', content: 'x', agentId: 'agent' } as never))
+    const planned = denyText(await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x', agentId: 'agent' } as never))
+    expect([outside.includes('scope drift'), planned]).toEqual([true, ''])
+  })
+  test('the control: in a small change window the same write passes', async ($, on) => {
+    world(on, files(null), { projectRoot: '/repo' })
+    await $.session.start(START)
+    expect(denyText(await $.tool.call({ tool: 'Write', file_path: 'src/billing.ts', content: 'x', agentId: 'agent' } as never))).toBe('')
+  })
+})
+
+// 9.8.5 (WP25): `plan patch` stays the person's in every form (a command line, a file outside the approved set); `plan
+// amend` is no person only call: its whole effect is bounded by the CLI whoever calls it (blocker B3 of the red team
+// report on safety, red-safety.md, a working paper of the build), so an agent's call passes the guard and the CLI's
+// own refusals hold it.
+// The record of the amendments and patches is the CLI's to write.
+describe('WP25: the plan amendment and the plan patch', () => {
+  const PATCHES = [
+    `${CLI} plan patch G1 --cmd 'make test-g1'`,
+    `${CLI} plan patch task 2 --cmd 'make test-2'`,
+    `${CLI} plan patch integration --cmd 'make all'`,
+    `${CLI} plan patch task 2 --add-file src/billing.ts`,
+  ]
+  test('plan patch typed by an agent or the session stays refused, in every form, at Plan and at Build', () => {
+    for (const stage of ['plan', 'build'] as const) {
+      for (const cmd of PATCHES) expect(isDeny(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+    }
+    // the answer for one patch is no answer for another
+    const picked = `${CLI} plan patch task 2 --add-file src/billing.ts`
+    expect(isDeny(bash(ctx('build', { allowed: [picked] }), `${CLI} plan patch task 2 --add-file src/other.ts`))).toBe(true)
+    expect(isDeny(bash(ctx('build', { allowed: [picked] }), `${CLI} plan patch task 3 --add-file src/billing.ts`))).toBe(true)
+  })
+  test('plan patch task N --add-file F passes as the call of the person\'s answer, word for word', () => {
+    const picked = `${CLI} plan patch task 2 --add-file src/billing.ts`
+    expect('allow' in bash(ctx('build', { allowed: [picked] }), picked)).toBe(true)
+  })
+  test('plan amend typed by an agent passes the guard: the CLI\'s own refusals are what hold it', () => {
+    for (const cmd of [`${CLI} plan amend task 2 --add-file src/app.ts`, `${CLI} plan amend task 2 --add-file src/app.ts --failure F3`]) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+  })
+  test('during a run a write of .temper/evidence/amendments.json is refused: an editing tool, a redirect, an rm', () => {
+    const f = '.temper/evidence/amendments.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), f, tool)), `${stage} ${tool}`).toBe(true)
+      expect(guarded(write(ctx(stage), `/repo/${f}`)), `${stage} absolute`).toBe(true)
+      for (const cmd of [`echo '[]' > ${f}`, `printf x >> ${f}`, `rm -f ${f}`]) {
+        expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
   })
 })
