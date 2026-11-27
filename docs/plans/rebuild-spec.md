@@ -280,4 +280,7 @@ Each step is one pull request that ends green.
 - Booking holds the copyright. `NOTICE` and the license headers carry Booking's legal name, as its open source
   office writes it.
 
-Still open: does Booking ask contributors for an agreement?
+- Anyone may use Temper under Apache 2.0. Only people who work at Booking contribute code. So no contributor
+  agreement is needed, and `CONTRIBUTING.md` says: issues and ideas are welcome from anyone, a pull request from
+  outside Booking is closed with a note of thanks, and every merge needs a review by a Booking code owner
+  (`CODEOWNERS` names a Booking team, and the default branch is protected).
